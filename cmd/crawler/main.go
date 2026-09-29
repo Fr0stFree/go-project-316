@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"crawler/internal/cliapp"
+	"code/internal/cliapp"
 )
 
 func main() {
