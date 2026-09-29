@@ -1,0 +1,69 @@
+name: Run tests and linters
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download the app
+        uses: actions/checkout@v4
+
+      - name: Set up golang
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Build the app
+        run: make build
+
+      - name: Run the tests
+        run: make test
+
+      - name: Generate coverage report
+        run: make test-coverage
+    
+    #   - name: Upload coverage report
+    #     uses: actions/upload-artifact@v4
+    #     with:
+    #       name: coverage-report
+    #       path: coverage.out
+    #       if-no-files-found: error
+
+  lint:
+    name: Run linters
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download the app
+        uses: actions/checkout@v4
+
+      - name: Set up golang
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify module files
+        run: make tidy-check
+
+      - name: Install golangci-lint
+        run: make install-lint
+
+      - name: Check formatting
+        run: make fmt-check
+
+      - name: Run the linters
+        run: make lint
