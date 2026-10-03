@@ -12,7 +12,7 @@ import (
 func main() {
 	app := cliapp.New()
 	if err := app.Run(context.Background(), os.Args); err != nil {
-		fmt.Fprintf(os.Stderr, "Something went wrong: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Something went wrong: %v\n", err) // TODO: hide error, log instead
 		os.Exit(1)
 	}
 }

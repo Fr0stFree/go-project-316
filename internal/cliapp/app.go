@@ -5,6 +5,7 @@ import (
 	"code"
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/urfave/cli/v3"
 )
@@ -106,8 +107,16 @@ func cliAction(ctx context.Context, cmd *cli.Command) error {
 		Timeout:     cmd.String("timeout"),
 		UserAgent:   cmd.String("user-agent"),
 		Concurrency: cmd.Int("workers"),
+		IndentJSON:  true,
+		HTTPClient:  &http.Client{},
 	}
-	_, err := code.Analyze(ctx, opts)
+
+	report, err := code.Analyze(ctx, opts)
+	if err != nil {
+		return cli.Exit(fmt.Sprintf("something went wrong during analysis of `%s`: %v", url, err), 1)
+	}
+
+	fmt.Println(string(report))
 
 	return err
 }
