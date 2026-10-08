@@ -1,5 +1,5 @@
-// Package htmlparser provides functions for parsing HTML content.
-package htmlparser
+// Package crawler provides functions for parsing HTML content.
+package crawler
 
 import (
 	"errors"
@@ -9,13 +9,13 @@ import (
 )
 
 // ParsedPage represents a parsed HTML page.
-type ParsedPage struct {
+type parsedPage struct {
 	Links []string
 }
 
 // ParsePage parses the HTML content from the provided reader and extracts all the links from anchor tags.
-func ParsePage(r io.Reader) (ParsedPage, error) {
-	page := ParsedPage{Links: make([]string, 0)}
+func parseHTMLPage(r io.Reader) (parsedPage, error) {
+	page := parsedPage{Links: make([]string, 0)}
 
 	tokenizer := html.NewTokenizer(r)
 	for {

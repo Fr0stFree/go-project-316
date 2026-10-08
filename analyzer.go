@@ -3,17 +3,15 @@ package code
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"os"
-	"sync"
 	"time"
 
 	"log/slog"
 
 	"code/internal/common/fmttools"
 	"code/internal/common/timeutils"
-	"code/internal/htmlparser"
+	"code/internal/crawler"
 )
 
 // Options defines the configuration for the web crawling operation.
@@ -54,103 +52,18 @@ type NodeLink struct {
 	StatusCode int    `json:"status_code,omitempty"`
 }
 
-// CrawlJob represents a URL scheduled for crawling.
-type CrawlJob struct {
-	URL          string
-	Depth        int
-	DiscoveredAt time.Time
-}
-
-// CrawlResult represents the result of processing a single crawl job.
-type CrawlResult struct {
-	URL          string
-	Depth        int
-	HTTPStatus   int
-	Status       string
-	DiscoveredAt time.Time
-	FoundURLs    []string
-	Err          error
-}
-
-// IsBroken reports whether crawling the URL resulted in a network,
-// parsing, or HTTP error.
-func (r CrawlResult) IsBroken() bool {
-	return r.Err != nil || r.HTTPStatus >= http.StatusBadRequest
-}
-
 // Analyze crawls the configured URL and returns the resulting report as JSON.
 func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	configureLogger()
 
-	state := NewCrawlState()
-	pool := NewWorkerPool(
-		ctx,
-		opts.UserAgent,
-		opts.HTTPClient,
-	)
-	pool.Start(opts.Concurrency)
+	crawler := crawler.New(opts.UserAgent, opts.HTTPClient, opts.Concurrency, opts.Depth)
 
-	rootJob := CrawlJob{
-		URL:          opts.URL,
-		Depth:        0,
-		DiscoveredAt: timeutils.UTCNowPretty(),
+	crawledResults, err := crawler.Run(ctx, opts.URL)
+	if err != nil {
+		return nil, err
 	}
 
-	state.MarkSeen(rootJob.URL)
-
-	if !pool.Submit(rootJob) {
-		pool.Stop()
-
-		return nil, ctx.Err()
-	}
-
-	pendingJobs := 1
-
-	for pendingJobs > 0 {
-		select {
-		case <-ctx.Done():
-			pool.Stop()
-
-			return nil, ctx.Err()
-
-		case result := <-pool.Results():
-			pendingJobs--
-
-			if err := state.AddResult(result); err != nil {
-				pool.Stop()
-
-				return nil, err
-			}
-
-			if result.Depth >= opts.Depth {
-				continue
-			}
-
-			for _, foundURL := range result.FoundURLs {
-				if !state.TryMarkSeen(foundURL) {
-					continue
-				}
-
-				job := CrawlJob{
-					URL:          foundURL,
-					Depth:        result.Depth + 1,
-					DiscoveredAt: timeutils.UTCNowPretty(),
-				}
-
-				if !pool.Submit(job) {
-					pool.Stop()
-
-					return nil, ctx.Err()
-				}
-
-				pendingJobs++
-			}
-		}
-	}
-
-	pool.Stop()
-
-	report := state.BuildReport(opts.URL, opts.Depth)
+	report := buildReport(opts.URL, opts.Depth, crawledResults)
 
 	return fmttools.ToJSON(report, opts.IndentJSON)
 }
@@ -166,65 +79,21 @@ func configureLogger() {
 	slog.SetDefault(slog.New(handler))
 }
 
-// CrawlState contains the state accumulated during a crawl.
-type CrawlState struct {
-	seen    map[string]struct{}
-	results map[string]CrawlResult
-}
-
-// NewCrawlState creates an empty crawl state.
-func NewCrawlState() *CrawlState {
-	return &CrawlState{
-		seen:    make(map[string]struct{}),
-		results: make(map[string]CrawlResult),
-	}
-}
-
-// MarkSeen marks a URL as discovered.
-func (s *CrawlState) MarkSeen(url string) {
-	s.seen[url] = struct{}{}
-}
-
-// TryMarkSeen marks a URL as discovered if it has not been seen before.
-//
-// It returns true when the URL was newly discovered.
-func (s *CrawlState) TryMarkSeen(url string) bool {
-	if _, exists := s.seen[url]; exists {
-		return false
-	}
-
-	s.MarkSeen(url)
-
-	return true
-}
-
-// AddResult stores the result of a completed crawl job.
-func (s *CrawlState) AddResult(result CrawlResult) error {
-	if _, exists := s.results[result.URL]; exists {
-		return errors.New("tried to add a duplicate crawl result")
-	}
-
-	s.results[result.URL] = result
-
-	return nil
-}
-
-// BuildReport creates a report from the accumulated crawl state.
-func (s *CrawlState) BuildReport(rootURL string, maxDepth int) *Report {
+func buildReport(rootURL string, maxDepth int, results map[string]crawler.TaskResult) *Report {
 	report := &Report{
 		URL:         rootURL,
 		Depth:       maxDepth,
 		GeneratedAt: timeutils.UTCNowPretty(),
-		Pages:       make([]ReportPage, 0, len(s.results)),
+		Pages:       make([]ReportPage, 0, len(results)),
 	}
 
-	for _, result := range s.results {
+	for _, result := range results {
 		report.Pages = append(report.Pages, ReportPage{
 			URL:          result.URL,
 			Depth:        result.Depth,
 			HTTPStatus:   result.HTTPStatus,
 			Status:       result.Status,
-			BrokenLinks:  s.brokenLinks(result),
+			BrokenLinks:  brokenLinks(result, results),
 			DiscoveredAt: result.DiscoveredAt,
 		})
 	}
@@ -232,12 +101,12 @@ func (s *CrawlState) BuildReport(rootURL string, maxDepth int) *Report {
 	return report
 }
 
-func (s *CrawlState) brokenLinks(result CrawlResult) []NodeLink {
+func brokenLinks(current crawler.TaskResult, all map[string]crawler.TaskResult) []NodeLink {
 	brokenLinks := make([]NodeLink, 0)
 
-	for _, url := range result.FoundURLs {
-		target, exists := s.results[url]
-		if !exists || !target.IsBroken() {
+	for _, url := range current.FoundURLs {
+		target, exists := all[url]
+		if !exists || target.Err == nil {
 			continue
 		}
 
@@ -254,134 +123,4 @@ func (s *CrawlState) brokenLinks(result CrawlResult) []NodeLink {
 	}
 
 	return brokenLinks
-}
-
-// WorkerPool concurrently processes crawl jobs.
-type WorkerPool struct {
-	ctx       context.Context
-	wg        sync.WaitGroup
-	jobs      chan CrawlJob
-	results   chan CrawlResult
-	userAgent string
-	client    *http.Client
-}
-
-// NewWorkerPool creates a new worker pool.
-func NewWorkerPool(
-	ctx context.Context,
-	userAgent string,
-	client *http.Client,
-) *WorkerPool {
-	return &WorkerPool{
-		ctx:       ctx,
-		jobs:      make(chan CrawlJob, 100),
-		results:   make(chan CrawlResult, 100),
-		userAgent: userAgent,
-		client:    client,
-	}
-}
-
-// Start starts the specified number of workers.
-func (p *WorkerPool) Start(workerCount int) {
-	for range workerCount {
-		p.wg.Add(1)
-		go p.runWorker()
-	}
-}
-
-// Submit schedules a crawl job.
-//
-// It returns false if the pool context has been cancelled.
-func (p *WorkerPool) Submit(job CrawlJob) bool {
-	select {
-	case p.jobs <- job:
-		return true
-	case <-p.ctx.Done():
-		return false
-	}
-}
-
-// Results returns completed crawl results.
-func (p *WorkerPool) Results() <-chan CrawlResult {
-	return p.results
-}
-
-// Stop stops the worker pool and waits for all workers to finish.
-func (p *WorkerPool) Stop() {
-	close(p.jobs)
-	p.wg.Wait()
-	close(p.results)
-}
-
-func (p *WorkerPool) runWorker() {
-	defer p.wg.Done()
-
-	for job := range p.jobs {
-		result := p.process(job)
-
-		select {
-		case p.results <- result:
-		case <-p.ctx.Done():
-			return
-		}
-	}
-}
-
-func (p *WorkerPool) process(job CrawlJob) CrawlResult {
-	slog.Debug(
-		"Processing URL",
-		"url", job.URL,
-		"depth", job.Depth,
-	)
-
-	result := CrawlResult{
-		URL:          job.URL,
-		Depth:        job.Depth,
-		DiscoveredAt: job.DiscoveredAt,
-	}
-
-	response, err := p.doRequest(job.URL)
-	if err != nil {
-		result.Err = err
-
-		return result
-	}
-
-	result.HTTPStatus = response.StatusCode
-	result.Status = response.Status
-
-	page, parseErr := htmlparser.ParsePage(response.Body)
-	closeErr := response.Body.Close()
-
-	if parseErr != nil {
-		result.Err = parseErr
-
-		return result
-	}
-
-	if closeErr != nil {
-		result.Err = closeErr
-
-		return result
-	}
-
-	result.FoundURLs = page.Links
-
-	return result
-}
-
-func (p *WorkerPool) doRequest(url string) (*http.Response, error) {
-	request, err := http.NewRequestWithContext(
-		p.ctx,
-		http.MethodGet,
-		url,
-		nil,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	request.Header.Set("User-Agent", p.userAgent)
-
-	return p.client.Do(request)
 }
