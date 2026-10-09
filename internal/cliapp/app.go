@@ -32,7 +32,7 @@ func cliArgsValidator(_ context.Context, cmd *cli.Command) error {
 var cliFlags = []cli.Flag{
 	&cli.IntFlag{
 		Name:  "depth",
-		Value: 10,
+		Value: 3,
 		Usage: "crawl depth",
 		Validator: func(value int) error {
 			if value < 1 {

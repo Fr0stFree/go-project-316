@@ -10,21 +10,14 @@ import (
 type WorkerPool[T, R any] struct {
 	jobs    chan T
 	results chan R
-	process func(context.Context, T) R
-	size    int
 }
 
 // New creates a WorkerPool with the specified number of workers
 // and a function for processing each job.
-func New[T, R any](
-	size int,
-	process func(context.Context, T) R,
-) *WorkerPool[T, R] {
+func New[T, R any]() *WorkerPool[T, R] {
 	return &WorkerPool[T, R]{
 		jobs:    make(chan T, 100), // TODO: hide?
 		results: make(chan R, 100),
-		size:    size,
-		process: process,
 	}
 }
 
@@ -39,12 +32,16 @@ func (p *WorkerPool[T, R]) Results() <-chan R {
 }
 
 // Start launches the configured number of workers.
-func (p *WorkerPool[T, R]) Start(ctx context.Context) context.CancelFunc {
+func (p *WorkerPool[T, R]) Start(
+	ctx context.Context,
+	process func(context.Context, T) R,
+	size int,
+) context.CancelFunc {
 	var wg sync.WaitGroup
 
 	ctx, cancel := context.WithCancel(ctx)
 
-	for range p.size {
+	for range size {
 		wg.Add(1)
 
 		go func() {
@@ -60,7 +57,7 @@ func (p *WorkerPool[T, R]) Start(ctx context.Context) context.CancelFunc {
 					}
 
 					select {
-					case p.results <- p.process(ctx, job):
+					case p.results <- process(ctx, job):
 						continue
 					case <-ctx.Done():
 						return

@@ -14,12 +14,12 @@ import (
 
 // Crawler manages concurrent web crawling and tracks discovered URLs and results.
 type Crawler struct {
-	seenUrls  map[types.URL]struct{}
-	results   map[types.URL]TaskResult
-	client    *http.Client
-	poolSize  int
-	maxDepth  int
-	userAgent string
+	seenUrls map[types.URL]struct{}
+	results  map[types.URL]TaskResult
+	fetcher  *httpFetcher
+	pool     *workerpool.WorkerPool[taskPayload, TaskResult]
+	poolSize int
+	maxDepth int
 }
 
 // Option configures a Crawler and returns an error if the configuration is invalid.
@@ -41,7 +41,7 @@ func WithPoolSize(size int) Option {
 // WithMaxDepth sets the maximum crawling depth.
 func WithMaxDepth(depth int) Option {
 	return func(c *Crawler) error {
-		if depth == 0 {
+		if depth < 0 {
 			return errors.New("max depth cannot negative")
 		}
 
@@ -54,8 +54,18 @@ func WithMaxDepth(depth int) Option {
 // WithUserAgent sets the User-Agent header used for HTTP requests.
 func WithUserAgent(userAgent string) Option {
 	return func(c *Crawler) error {
-		c.userAgent = userAgent
+		c.fetcher.userAgent = userAgent
 
+		return nil
+	}
+}
+
+// WithRetryConfig sets the retry configuration for HTTP requests.
+func WithRetryConfig(maxAttempts int, delay time.Duration) Option {
+	return func(c *Crawler) error {
+		c.fetcher.retry.maxAttempts = maxAttempts
+		c.fetcher.retry.retryDelay = delay
+		// todo: add validation
 		return nil
 	}
 }
@@ -63,12 +73,12 @@ func WithUserAgent(userAgent string) Option {
 // New creates a Crawler with the specified HTTP client, worker count, and maximum crawl depth.
 func New(client *http.Client, opts ...Option) (*Crawler, error) {
 	c := &Crawler{
-		seenUrls:  make(map[types.URL]struct{}),
-		results:   make(map[types.URL]TaskResult),
-		maxDepth:  3,
-		client:    client,
-		userAgent: "HexletGOCrawler",
-		poolSize:  3,
+		seenUrls: make(map[types.URL]struct{}),
+		results:  make(map[types.URL]TaskResult),
+		maxDepth: 3,
+		fetcher:  newHTTPFetcher(client),
+		pool:     workerpool.New[taskPayload, TaskResult](),
+		poolSize: 3,
 	}
 	for _, opt := range opts {
 		if err := opt(c); err != nil {
@@ -107,25 +117,21 @@ type TaskResult struct {
 // Run crawls pages starting from rootURL up to the configured maximum depth.
 // It returns the collected results or an error if the context is canceled.
 func (c *Crawler) Run(ctx context.Context, rootURL types.URL) (map[types.URL]TaskResult, error) {
-	pool := workerpool.New(c.poolSize, c.process)
-
-	stopPool := pool.Start(ctx)
+	stopPool := c.pool.Start(ctx, c.process, c.poolSize)
 	defer stopPool()
 
 	c.seenUrls[rootURL] = struct{}{}
 	task := *newTaskPayload(rootURL, 0)
 
-	pool.Jobs() <- task
+	c.pool.Jobs() <- task
 
-	// Track pending tasks to determine when crawling is complete.
 	runningTasks := 1
-
 	for runningTasks > 0 {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 
-		case result := <-pool.Results():
+		case result := <-c.pool.Results():
 			runningTasks--
 
 			c.results[result.URL] = result
@@ -145,7 +151,7 @@ func (c *Crawler) Run(ctx context.Context, rootURL types.URL) (map[types.URL]Tas
 				case <-ctx.Done():
 					return nil, ctx.Err()
 
-				case pool.Jobs() <- job:
+				case c.pool.Jobs() <- job:
 					runningTasks++
 				}
 			}
@@ -168,23 +174,9 @@ func (c *Crawler) process(ctx context.Context, job taskPayload) TaskResult {
 		DiscoveredAt: job.DiscoveredAt,
 	}
 
-	request, reqErr := http.NewRequestWithContext(
-		ctx,
-		http.MethodGet,
-		string(job.URL),
-		nil,
-	)
-	if reqErr != nil {
-		result.Err = reqErr
-
-		return result
-	}
-
-	request.Header.Set("User-Agent", c.userAgent)
-
-	response, err := c.client.Do(request)
-	if err != nil {
-		result.Err = err
+	response, respErr := c.fetcher.fetch(ctx, job.URL)
+	if respErr != nil {
+		result.Err = respErr
 
 		return result
 	}
