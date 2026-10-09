@@ -4,6 +4,8 @@ import (
 	"code/internal/common/types"
 	"errors"
 	"io"
+	"net/url"
+	"slices"
 
 	"golang.org/x/net/html"
 )
@@ -12,8 +14,13 @@ type parsedPage struct {
 	Links []types.URL
 }
 
-func parseHTMLPage(r io.Reader) (parsedPage, error) {
+func parseHTMLPage(r io.Reader, pageURL types.URL) (parsedPage, error) {
 	page := parsedPage{Links: make([]types.URL, 0)}
+
+	baseURL, err := url.Parse(string(pageURL))
+	if err != nil {
+		return page, err
+	}
 
 	tokenizer := html.NewTokenizer(r)
 	for {
@@ -33,11 +40,22 @@ func parseHTMLPage(r io.Reader) (parsedPage, error) {
 			}
 
 			for _, attr := range token.Attr {
-				if attr.Key == "href" {
-					page.Links = append(page.Links, types.URL(attr.Val))
-
+				if attr.Key != "href" || attr.Val == "" {
 					break
 				}
+
+				ref, err := url.Parse(attr.Val)
+				if err != nil {
+					break
+				}
+
+				absoluteURL := baseURL.ResolveReference(ref)
+				if !slices.Contains([]string{"http", "https"}, absoluteURL.Scheme) {
+					break
+				}
+
+				absoluteURL.Fragment = ""
+				page.Links = append(page.Links, types.URL(absoluteURL.String()))
 			}
 		}
 	}

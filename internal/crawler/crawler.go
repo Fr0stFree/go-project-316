@@ -12,6 +12,73 @@ import (
 	"time"
 )
 
+// Crawler manages concurrent web crawling and tracks discovered URLs and results.
+type Crawler struct {
+	seenUrls  map[types.URL]struct{}
+	results   map[types.URL]TaskResult
+	client    *http.Client
+	poolSize  int
+	maxDepth  int
+	userAgent string
+}
+
+// Option configures a Crawler and returns an error if the configuration is invalid.
+type Option func(*Crawler) error
+
+// WithPoolSize sets the number of concurrent workers.
+func WithPoolSize(size int) Option {
+	return func(c *Crawler) error {
+		if size <= 0 {
+			return errors.New("size cannot be non-positive")
+		}
+
+		c.poolSize = size
+
+		return nil
+	}
+}
+
+// WithMaxDepth sets the maximum crawling depth.
+func WithMaxDepth(depth int) Option {
+	return func(c *Crawler) error {
+		if depth == 0 {
+			return errors.New("max depth cannot negative")
+		}
+
+		c.maxDepth = depth
+
+		return nil
+	}
+}
+
+// WithUserAgent sets the User-Agent header used for HTTP requests.
+func WithUserAgent(userAgent string) Option {
+	return func(c *Crawler) error {
+		c.userAgent = userAgent
+
+		return nil
+	}
+}
+
+// New creates a Crawler with the specified HTTP client, worker count, and maximum crawl depth.
+func New(client *http.Client, opts ...Option) (*Crawler, error) {
+	c := &Crawler{
+		seenUrls:  make(map[types.URL]struct{}),
+		results:   make(map[types.URL]TaskResult),
+		maxDepth:  3,
+		client:    client,
+		userAgent: "HexletGOCrawler",
+		poolSize:  3,
+	}
+	for _, opt := range opts {
+		if err := opt(c); err != nil {
+			return nil, err
+		}
+	}
+
+	return c, nil
+}
+
 type taskPayload struct {
 	URL          types.URL
 	Depth        int
@@ -35,32 +102,6 @@ type TaskResult struct {
 	DiscoveredAt time.Time
 	FoundURLs    []types.URL
 	Err          error
-}
-
-// Crawler manages concurrent web crawling and tracks discovered URLs and results.
-type Crawler struct {
-	seenUrls  map[types.URL]struct{}
-	results   map[types.URL]TaskResult
-	client    *http.Client
-	poolSize  int
-	maxDepth  int
-	userAgent string
-}
-
-// New creates a Crawler with the specified HTTP client, worker count, and maximum crawl depth.
-func New(userAgent string, client *http.Client, poolSize int, maxDepth int) (*Crawler, error) {
-	if poolSize <= 0 {
-		return nil, errors.New("invalid amount of workers")
-	}
-
-	return &Crawler{
-		seenUrls:  make(map[types.URL]struct{}),
-		results:   make(map[types.URL]TaskResult),
-		maxDepth:  maxDepth,
-		client:    client,
-		userAgent: userAgent,
-		poolSize:  poolSize,
-	}, nil
 }
 
 // Run crawls pages starting from rootURL up to the configured maximum depth.
@@ -151,7 +192,7 @@ func (c *Crawler) process(ctx context.Context, job taskPayload) TaskResult {
 	result.HTTPStatus = response.StatusCode
 	result.Status = response.Status
 
-	page, parseErr := parseHTMLPage(response.Body)
+	page, parseErr := parseHTMLPage(response.Body, job.URL)
 	closeErr := response.Body.Close()
 
 	if parseErr != nil {

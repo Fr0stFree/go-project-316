@@ -57,7 +57,12 @@ type NodeLink struct {
 func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	configureLogger()
 
-	crawler, err := crawler.New(opts.UserAgent, opts.HTTPClient, opts.Concurrency, opts.Depth)
+	crawler, err := crawler.New(
+		opts.HTTPClient,
+		crawler.WithUserAgent(opts.UserAgent),
+		crawler.WithPoolSize(opts.Concurrency),
+		crawler.WithMaxDepth(opts.Depth),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -94,6 +99,10 @@ func buildReport(rootURL types.URL, maxDepth int, results map[types.URL]crawler.
 	}
 
 	for _, result := range results {
+		if result.Err != nil || result.HTTPStatus == 0 || result.HTTPStatus >= 400 {
+			continue
+		}
+
 		report.Pages = append(report.Pages, ReportPage{
 			URL:          result.URL,
 			Depth:        result.Depth,

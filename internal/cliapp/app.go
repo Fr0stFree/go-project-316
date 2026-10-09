@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/urfave/cli/v3"
 )
@@ -108,7 +109,9 @@ func cliAction(ctx context.Context, cmd *cli.Command) error {
 		UserAgent:   cmd.String("user-agent"),
 		Concurrency: cmd.Int("workers"),
 		IndentJSON:  true,
-		HTTPClient:  &http.Client{},
+		HTTPClient: &http.Client{
+			Timeout: time.Second * 5,
+		},
 	}
 
 	report, err := code.Analyze(ctx, opts)
