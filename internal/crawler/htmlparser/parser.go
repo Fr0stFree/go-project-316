@@ -1,4 +1,4 @@
-package crawler
+package htmlparser
 
 import (
 	"code/internal/common/types"
@@ -10,12 +10,12 @@ import (
 	"golang.org/x/net/html"
 )
 
-type parsedPage struct {
+type ParsedPage struct {
 	Links []types.URL
 }
 
-func parseHTMLPage(r io.Reader, pageURL types.URL) (parsedPage, error) {
-	page := parsedPage{Links: make([]types.URL, 0)}
+func ParsePage(r io.Reader, pageURL types.URL) (ParsedPage, error) {
+	page := ParsedPage{Links: make([]types.URL, 0)}
 
 	baseURL, err := url.Parse(string(pageURL))
 	if err != nil {

@@ -1,36 +1,45 @@
-package crawler
+package httpfetcher
 
 import (
 	"code/internal/common/types"
 	"context"
 	"log/slog"
 	"net/http"
-	"time"
 )
 
-type retryConfig struct {
-	maxAttempts int
-	retryDelay  time.Duration
+type Fetcher struct {
+	client           *http.Client
+	userAgent        string
+	maxRetryAttempts int
+	limiter          rateLimiter
 }
 
-type httpFetcher struct {
-	client    *http.Client
-	userAgent string
-	retry     retryConfig
-}
-
-func newHTTPFetcher(client *http.Client) *httpFetcher {
-	return &httpFetcher{
-		client:    client,
-		userAgent: "GoCrawler/1.0",
-		retry: retryConfig{
-			retryDelay:  time.Second * 1,
-			maxAttempts: 1,
-		},
+func New(client *http.Client) *Fetcher {
+	return &Fetcher{
+		client:           client,
+		userAgent:        "GoCrawler/1.0",
+		maxRetryAttempts: 1,
+		limiter:          &noopLimiter{},
 	}
 }
 
-func (h *httpFetcher) fetch(ctx context.Context, url types.URL) (*http.Response, error) {
+func (h *Fetcher) SetMaxAttempts(attempts int) error {
+	h.maxRetryAttempts = attempts
+	// todo: add validation
+	return nil
+}
+
+func (h *Fetcher) SetUserAgent(userAgent string) error {
+	h.userAgent = userAgent
+	// todo: add validation
+	return nil
+}
+
+func (h *Fetcher) SetRateLimiter(limiter rateLimiter) {
+	h.limiter = limiter
+}
+
+func (h *Fetcher) Fetch(ctx context.Context, url types.URL) (*http.Response, error) {
 	for attempt := 0; ; attempt++ {
 		request, err := http.NewRequestWithContext(
 			ctx,
@@ -51,7 +60,7 @@ func (h *httpFetcher) fetch(ctx context.Context, url types.URL) (*http.Response,
 			shouldRetry = isRetryableStatus(response.StatusCode)
 		}
 
-		if !shouldRetry || attempt >= h.retry.maxAttempts-1 {
+		if !shouldRetry || attempt >= h.maxRetryAttempts-1 {
 			return response, err
 		}
 
@@ -59,23 +68,16 @@ func (h *httpFetcher) fetch(ctx context.Context, url types.URL) (*http.Response,
 			_ = response.Body.Close()
 		}
 
+		if err = h.limiter.Wait(ctx); err != nil {
+			return nil, err
+		}
+
 		slog.Debug(
 			"Retrying HTTP request",
 			"url", url,
 			"attempt", attempt+1,
-			"delay", h.retry.retryDelay,
 			"error", err,
 		)
-
-		timer := time.NewTimer(h.retry.retryDelay)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-
-			return nil, ctx.Err()
-
-		case <-timer.C:
-		}
 	}
 }
 

@@ -4,6 +4,9 @@ package crawler
 import (
 	"code/internal/common/timeutils"
 	"code/internal/common/types"
+	"code/internal/crawler/htmlparser"
+	"code/internal/crawler/httpfetcher"
+	"code/internal/crawler/ratelimiter"
 	"code/internal/workerpool"
 	"context"
 	"errors"
@@ -16,7 +19,7 @@ import (
 type Crawler struct {
 	seenUrls map[types.URL]struct{}
 	results  map[types.URL]TaskResult
-	fetcher  *httpFetcher
+	fetcher  *httpfetcher.Fetcher
 	pool     *workerpool.WorkerPool[taskPayload, TaskResult]
 	poolSize int
 	maxDepth int
@@ -54,18 +57,49 @@ func WithMaxDepth(depth int) Option {
 // WithUserAgent sets the User-Agent header used for HTTP requests.
 func WithUserAgent(userAgent string) Option {
 	return func(c *Crawler) error {
-		c.fetcher.userAgent = userAgent
+		err := c.fetcher.SetUserAgent(userAgent)
+		if err != nil {
+			return err
+		}
 
 		return nil
 	}
 }
 
-// WithRetryConfig sets the retry configuration for HTTP requests.
-func WithRetryConfig(maxAttempts int, delay time.Duration) Option {
+func WithRPS(ctx context.Context, rps int) Option {
 	return func(c *Crawler) error {
-		c.fetcher.retry.maxAttempts = maxAttempts
-		c.fetcher.retry.retryDelay = delay
-		// todo: add validation
+		limiter, err := ratelimiter.NewRPSRateLimiter(ctx, rps)
+		if err != nil {
+			return err
+		}
+
+		c.fetcher.SetRateLimiter(limiter)
+
+		return nil
+	}
+}
+
+func WithDelay(delay time.Duration) Option {
+	return func(c *Crawler) error {
+		limiter, err := ratelimiter.NewDelayRateLimiter(delay)
+		if err != nil {
+			return err
+		}
+
+		c.fetcher.SetRateLimiter(limiter)
+
+		return nil
+	}
+}
+
+// WithMaxAttempts sets the retry configuration for HTTP requests.
+func WithMaxAttempts(maxAttempts int) Option {
+	return func(c *Crawler) error {
+		err := c.fetcher.SetMaxAttempts(maxAttempts)
+		if err != nil {
+			return err
+		}
+
 		return nil
 	}
 }
@@ -76,7 +110,7 @@ func New(client *http.Client, opts ...Option) (*Crawler, error) {
 		seenUrls: make(map[types.URL]struct{}),
 		results:  make(map[types.URL]TaskResult),
 		maxDepth: 3,
-		fetcher:  newHTTPFetcher(client),
+		fetcher:  httpfetcher.New(client),
 		pool:     workerpool.New[taskPayload, TaskResult](),
 		poolSize: 3,
 	}
@@ -174,7 +208,7 @@ func (c *Crawler) process(ctx context.Context, job taskPayload) TaskResult {
 		DiscoveredAt: job.DiscoveredAt,
 	}
 
-	response, respErr := c.fetcher.fetch(ctx, job.URL)
+	response, respErr := c.fetcher.Fetch(ctx, job.URL)
 	if respErr != nil {
 		result.Err = respErr
 
@@ -184,7 +218,7 @@ func (c *Crawler) process(ctx context.Context, job taskPayload) TaskResult {
 	result.HTTPStatus = response.StatusCode
 	result.Status = response.Status
 
-	page, parseErr := parseHTMLPage(response.Body, job.URL)
+	page, parseErr := htmlparser.ParsePage(response.Body, job.URL)
 	closeErr := response.Body.Close()
 
 	if parseErr != nil {
