@@ -3,22 +3,22 @@ package crawler
 
 import (
 	"code/internal/common/timeutils"
+	"code/internal/common/types"
 	"code/internal/workerpool"
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
-	"sync/atomic"
 	"time"
 )
 
-// CrawlJob represents a URL scheduled for crawling.
 type taskPayload struct {
-	URL          string
+	URL          types.URL
 	Depth        int
 	DiscoveredAt time.Time
 }
 
-func newTaskPayload(url string, depth int) *taskPayload {
+func newTaskPayload(url types.URL, depth int) *taskPayload {
 	return &taskPayload{
 		URL:          url,
 		Depth:        depth,
@@ -26,55 +26,66 @@ func newTaskPayload(url string, depth int) *taskPayload {
 	}
 }
 
-// TaskResult represents the result of processing a single crawl job.
+// TaskResult represents the result of processing a single crawl task.
 type TaskResult struct {
-	URL          string
+	URL          types.URL
 	Depth        int
 	HTTPStatus   int
 	Status       string
 	DiscoveredAt time.Time
-	FoundURLs    []string
+	FoundURLs    []types.URL
 	Err          error
 }
 
+// Crawler manages concurrent web crawling and tracks discovered URLs and results.
 type Crawler struct {
-	seenUrls    map[string]struct{}
-	results     map[string]TaskResult
-	client      *http.Client
-	poolSize    int
-	runningJobs atomic.Int64
-	maxDepth    int
-	userAgent   string
+	seenUrls  map[types.URL]struct{}
+	results   map[types.URL]TaskResult
+	client    *http.Client
+	poolSize  int
+	maxDepth  int
+	userAgent string
 }
 
-func New(userAgent string, client *http.Client, poolSize int, maxDepth int) *Crawler {
+// New creates a Crawler with the specified HTTP client, worker count, and maximum crawl depth.
+func New(userAgent string, client *http.Client, poolSize int, maxDepth int) (*Crawler, error) {
+	if poolSize <= 0 {
+		return nil, errors.New("invalid amount of workers")
+	}
+
 	return &Crawler{
-		seenUrls:  make(map[string]struct{}),
-		results:   make(map[string]TaskResult),
+		seenUrls:  make(map[types.URL]struct{}),
+		results:   make(map[types.URL]TaskResult),
 		maxDepth:  maxDepth,
 		client:    client,
 		userAgent: userAgent,
 		poolSize:  poolSize,
-	}
+	}, nil
 }
 
-func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]TaskResult, error) {
+// Run crawls pages starting from rootURL up to the configured maximum depth.
+// It returns the collected results or an error if the context is canceled.
+func (c *Crawler) Run(ctx context.Context, rootURL types.URL) (map[types.URL]TaskResult, error) {
 	pool := workerpool.New(c.poolSize, c.process)
-	pool.Start(ctx)
+
+	stopPool := pool.Start(ctx)
+	defer stopPool()
 
 	c.seenUrls[rootURL] = struct{}{}
-	job := *newTaskPayload(rootURL, 0)
+	task := *newTaskPayload(rootURL, 0)
 
-	pool.Jobs() <- job
+	pool.Jobs() <- task
 
-	c.runningJobs.Add(1)
+	// Track pending tasks to determine when crawling is complete.
+	runningTasks := 1
 
-	for c.runningJobs.Load() > 0 {
+	for runningTasks > 0 {
 		select {
 		case <-ctx.Done():
-			pool.Stop()
+			return nil, ctx.Err()
+
 		case result := <-pool.Results():
-			c.runningJobs.Add(-1)
+			runningTasks--
 
 			c.results[result.URL] = result
 			if result.Depth >= c.maxDepth {
@@ -91,15 +102,14 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]TaskResul
 				job := *newTaskPayload(foundURL, result.Depth+1)
 				select {
 				case <-ctx.Done():
-					pool.Stop()
+					return nil, ctx.Err()
+
 				case pool.Jobs() <- job:
-					c.runningJobs.Add(1)
+					runningTasks++
 				}
 			}
 		}
 	}
-
-	pool.Stop()
 
 	return c.results, nil
 }
@@ -120,7 +130,7 @@ func (c *Crawler) process(ctx context.Context, job taskPayload) TaskResult {
 	request, reqErr := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		job.URL,
+		string(job.URL),
 		nil,
 	)
 	if reqErr != nil {
