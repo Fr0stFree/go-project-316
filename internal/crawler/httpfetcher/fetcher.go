@@ -1,10 +1,10 @@
 package httpfetcher
 
 import (
-	"code/internal/common/types"
 	"context"
 	"log/slog"
 	"net/http"
+	"net/url"
 )
 
 type Fetcher struct {
@@ -39,12 +39,18 @@ func (h *Fetcher) SetRateLimiter(limiter rateLimiter) {
 	h.limiter = limiter
 }
 
-func (h *Fetcher) Fetch(ctx context.Context, url types.URL) (*http.Response, error) {
+func (h *Fetcher) Fetch(ctx context.Context, url *url.URL) (*http.Response, error) {
 	for attempt := 0; ; attempt++ {
+		slog.Debug(
+			"Making HTTP request",
+			"url", url.String(),
+			"attempt", attempt+1,
+		)
+
 		request, err := http.NewRequestWithContext(
 			ctx,
 			http.MethodGet,
-			string(url),
+			url.String(),
 			nil,
 		)
 		if err != nil {
@@ -71,13 +77,6 @@ func (h *Fetcher) Fetch(ctx context.Context, url types.URL) (*http.Response, err
 		if err = h.limiter.Wait(ctx); err != nil {
 			return nil, err
 		}
-
-		slog.Debug(
-			"Retrying HTTP request",
-			"url", url,
-			"attempt", attempt+1,
-			"error", err,
-		)
 	}
 }
 

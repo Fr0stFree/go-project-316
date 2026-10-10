@@ -1,7 +1,6 @@
 package htmlparser
 
 import (
-	"code/internal/common/types"
 	"errors"
 	"io"
 	"net/url"
@@ -11,13 +10,13 @@ import (
 )
 
 type ParsedPage struct {
-	Links []types.URL
+	Links []*url.URL
 }
 
-func ParsePage(r io.Reader, pageURL types.URL) (ParsedPage, error) {
-	page := ParsedPage{Links: make([]types.URL, 0)}
+func ParsePage(r io.Reader, pageURL *url.URL) (ParsedPage, error) {
+	page := ParsedPage{Links: make([]*url.URL, 0)}
 
-	baseURL, err := url.Parse(string(pageURL))
+	baseURL, err := url.Parse(pageURL.String())
 	if err != nil {
 		return page, err
 	}
@@ -55,7 +54,7 @@ func ParsePage(r io.Reader, pageURL types.URL) (ParsedPage, error) {
 				}
 
 				absoluteURL.Fragment = ""
-				page.Links = append(page.Links, types.URL(absoluteURL.String()))
+				page.Links = append(page.Links, absoluteURL)
 			}
 		}
 	}

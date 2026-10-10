@@ -3,22 +3,22 @@ package crawler
 
 import (
 	"code/internal/common/timeutils"
-	"code/internal/common/types"
 	"code/internal/crawler/htmlparser"
 	"code/internal/crawler/httpfetcher"
 	"code/internal/crawler/ratelimiter"
-	"code/internal/workerpool"
+	"code/internal/crawler/workerpool"
 	"context"
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 )
 
 // Crawler manages concurrent web crawling and tracks discovered URLs and results.
 type Crawler struct {
-	seenUrls map[types.URL]struct{}
-	results  map[types.URL]TaskResult
+	seenUrls map[*url.URL]struct{}
+	results  map[*url.URL]TaskResult
 	fetcher  *httpfetcher.Fetcher
 	pool     *workerpool.WorkerPool[taskPayload, TaskResult]
 	poolSize int
@@ -107,8 +107,8 @@ func WithMaxAttempts(maxAttempts int) Option {
 // New creates a Crawler with the specified HTTP client, worker count, and maximum crawl depth.
 func New(client *http.Client, opts ...Option) (*Crawler, error) {
 	c := &Crawler{
-		seenUrls: make(map[types.URL]struct{}),
-		results:  make(map[types.URL]TaskResult),
+		seenUrls: make(map[*url.URL]struct{}),
+		results:  make(map[*url.URL]TaskResult),
 		maxDepth: 3,
 		fetcher:  httpfetcher.New(client),
 		pool:     workerpool.New[taskPayload, TaskResult](),
@@ -124,12 +124,12 @@ func New(client *http.Client, opts ...Option) (*Crawler, error) {
 }
 
 type taskPayload struct {
-	URL          types.URL
+	URL          *url.URL
 	Depth        int
 	DiscoveredAt time.Time
 }
 
-func newTaskPayload(url types.URL, depth int) *taskPayload {
+func newTaskPayload(url *url.URL, depth int) *taskPayload {
 	return &taskPayload{
 		URL:          url,
 		Depth:        depth,
@@ -139,23 +139,28 @@ func newTaskPayload(url types.URL, depth int) *taskPayload {
 
 // TaskResult represents the result of processing a single crawl task.
 type TaskResult struct {
-	URL          types.URL
+	URL          *url.URL
 	Depth        int
 	HTTPStatus   int
 	Status       string
 	DiscoveredAt time.Time
-	FoundURLs    []types.URL
+	FoundURLs    []*url.URL
 	Err          error
 }
 
 // Run crawls pages starting from rootURL up to the configured maximum depth.
 // It returns the collected results or an error if the context is canceled.
-func (c *Crawler) Run(ctx context.Context, rootURL types.URL) (map[types.URL]TaskResult, error) {
+func (c *Crawler) Run(ctx context.Context, rootURL string) (map[*url.URL]TaskResult, error) {
 	stopPool := c.pool.Start(ctx, c.process, c.poolSize)
 	defer stopPool()
 
-	c.seenUrls[rootURL] = struct{}{}
-	task := *newTaskPayload(rootURL, 0)
+	parsedRootURL, err := url.Parse(rootURL)
+	if err != nil {
+		return nil, err
+	}
+
+	c.seenUrls[parsedRootURL] = struct{}{}
+	task := *newTaskPayload(parsedRootURL, 0)
 
 	c.pool.Jobs() <- task
 

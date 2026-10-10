@@ -5,14 +5,12 @@ import (
 	"context"
 	"net/http"
 	"os"
-	"time"
 
 	"log/slog"
 
 	"code/internal/common/fmttools"
-	"code/internal/common/timeutils"
-	"code/internal/common/types"
 	"code/internal/crawler"
+	"code/internal/report"
 )
 
 // Options defines the configuration for the web crawling operation.
@@ -26,31 +24,6 @@ type Options struct {
 	Concurrency int
 	IndentJSON  bool
 	HTTPClient  *http.Client
-}
-
-// Report represents the result of a web crawling operation.
-type Report struct {
-	URL         types.URL    `json:"root_url"`
-	Depth       int          `json:"depth"`
-	GeneratedAt time.Time    `json:"generated_at"`
-	Pages       []ReportPage `json:"pages"`
-}
-
-// ReportPage represents a single crawled page.
-type ReportPage struct {
-	URL          types.URL  `json:"url"`
-	Depth        int        `json:"depth"`
-	HTTPStatus   int        `json:"http_status"`
-	Status       string     `json:"status"`
-	BrokenLinks  []NodeLink `json:"broken_links"`
-	DiscoveredAt time.Time  `json:"discovered_at"`
-}
-
-// NodeLink represents a broken link found on a crawled page.
-type NodeLink struct {
-	URL        types.URL `json:"url"`
-	Error      string    `json:"error,omitempty"`
-	StatusCode int       `json:"status_code,omitempty"`
 }
 
 // Analyze crawls the configured URL and returns the resulting report as JSON.
@@ -67,14 +40,12 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 		return nil, err
 	}
 
-	rootURL := types.URL(opts.URL)
-
-	crawledResults, err := crawler.Run(ctx, rootURL)
+	crawledResults, err := crawler.Run(ctx, opts.URL)
 	if err != nil {
 		return nil, err
 	}
 
-	report := buildReport(rootURL, opts.Depth, crawledResults)
+	report := report.Build(opts.URL, opts.Depth, crawledResults)
 
 	return fmttools.ToJSON(report, opts.IndentJSON)
 }
@@ -88,54 +59,4 @@ func configureLogger() {
 	)
 
 	slog.SetDefault(slog.New(handler))
-}
-
-func buildReport(rootURL types.URL, maxDepth int, results map[types.URL]crawler.TaskResult) *Report {
-	report := &Report{
-		URL:         rootURL,
-		Depth:       maxDepth,
-		GeneratedAt: timeutils.UTCNowPretty(),
-		Pages:       make([]ReportPage, 0, len(results)),
-	}
-
-	for _, result := range results {
-		if result.Err != nil || result.HTTPStatus == 0 || result.HTTPStatus >= 400 {
-			continue
-		}
-
-		report.Pages = append(report.Pages, ReportPage{
-			URL:          result.URL,
-			Depth:        result.Depth,
-			HTTPStatus:   result.HTTPStatus,
-			Status:       result.Status,
-			BrokenLinks:  brokenLinks(result, results),
-			DiscoveredAt: result.DiscoveredAt,
-		})
-	}
-
-	return report
-}
-
-func brokenLinks(current crawler.TaskResult, all map[types.URL]crawler.TaskResult) []NodeLink {
-	brokenLinks := make([]NodeLink, 0)
-
-	for _, url := range current.FoundURLs {
-		target, exists := all[url]
-		if !exists || target.Err == nil {
-			continue
-		}
-
-		link := NodeLink{
-			URL:        target.URL,
-			StatusCode: target.HTTPStatus,
-		}
-
-		if target.Err != nil {
-			link.Error = target.Err.Error()
-		}
-
-		brokenLinks = append(brokenLinks, link)
-	}
-
-	return brokenLinks
 }
