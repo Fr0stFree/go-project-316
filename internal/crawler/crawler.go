@@ -122,7 +122,6 @@ func New(client *http.Client, opts ...Option) (*Crawler, error) {
 }
 
 // Run crawls pages starting from rootURL up to the configured maximum depth.
-// It returns the collected results or an error if the context is canceled.
 func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]TaskResult, error) {
 	state := newCrawlerState()
 	startedAt := time.Now()
@@ -138,6 +137,15 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]TaskResul
 	stopPool := c.pool.Start(ctx, c.process, c.poolSize)
 	defer stopPool()
 
+	defer func() {
+		slog.DebugContext(
+			ctx,
+			"Finished processing urls",
+			"duration", time.Since(startedAt),
+			"urlsAmount", len(state.seenURLs),
+		)
+	}()
+
 	parsedRootURL, err := url.Parse(rootURL)
 	if err != nil {
 		return nil, err
@@ -150,17 +158,17 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]TaskResul
 	case c.pool.Jobs() <- task:
 		state.increaseTasks()
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return state.results, ctx.Err()
 	}
 
 	for state.hasTasks() {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return state.results, ctx.Err()
 
 		case result, ok := <-c.pool.Results():
 			if !ok {
-				return nil, errors.New("worker pool stopped unexpectedly")
+				return state.results, errors.New("worker pool stopped unexpectedly")
 			}
 
 			state.completeTask(result)
@@ -177,7 +185,7 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]TaskResul
 				task := c.newTaskPayload(url, result.Depth+1)
 				select {
 				case <-ctx.Done():
-					return nil, ctx.Err()
+					return state.results, ctx.Err()
 
 				case c.pool.Jobs() <- task:
 					state.increaseTasks()
@@ -185,13 +193,6 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]TaskResul
 			}
 		}
 	}
-
-	slog.DebugContext(
-		ctx,
-		"Finished processing urls",
-		"duration", time.Since(startedAt),
-		"urlsAmount", len(state.seenURLs),
-	)
 
 	return state.results, nil
 }

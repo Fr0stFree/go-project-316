@@ -3,6 +3,7 @@ package code
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"code/internal/common/fmttools"
@@ -39,11 +40,16 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	}
 
 	crawledResults, err := crawler.Run(ctx, opts.URL)
-	if err != nil {
+	if err != nil && !errors.Is(err, context.Canceled) {
 		return nil, err
 	}
 
 	report := report.Build(opts.URL, opts.Depth, crawledResults)
 
-	return fmttools.ToJSON(report, opts.IndentJSON)
+	data, err := fmttools.ToJSON(report, opts.IndentJSON)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }
