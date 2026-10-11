@@ -18,6 +18,7 @@ type Fetcher struct {
 	userAgent        string
 	maxRetryAttempts int
 	limiter          rateLimiter
+	retryDelay       time.Duration
 }
 
 // New creates a Fetcher with the specified HTTP client and default settings.
@@ -33,6 +34,7 @@ func New(client *http.Client) *Fetcher {
 		userAgent:        "GoCrawler/1.0",
 		maxRetryAttempts: 1,
 		limiter:          &noopLimiter{},
+		retryDelay:       1 * time.Second,
 	}
 }
 
@@ -83,36 +85,15 @@ func (h *Fetcher) SetTimeout(timeout time.Duration) error {
 // Fetch performs an HTTP GET request to the specified URL.
 func (h *Fetcher) Fetch(ctx context.Context, url *url.URL) (*http.Response, error) {
 	for attempt := 0; ; attempt++ {
-		slog.Debug(
-			"Making HTTP request",
-			"url", url.String(),
-			"attempt", attempt+1,
-		)
-
-		request, err := http.NewRequestWithContext(
-			ctx,
-			http.MethodGet,
-			url.String(),
-			nil,
-		)
-		if err != nil {
-			return nil, err
+		if attempt > 0 {
+			if err := h.waitBeforeRetry(ctx); err != nil {
+				return nil, err
+			}
 		}
 
-		request.Header.Set("User-Agent", h.userAgent)
+		response, err := h.doRequest(ctx, url)
 
-		if err := h.limiter.Wait(ctx); err != nil {
-			return nil, err
-		}
-
-		response, err := h.client.Do(request)
-
-		shouldRetry := err != nil
-		if err == nil {
-			shouldRetry = httptools.IsRetryableStatus(response.StatusCode)
-		}
-
-		if !shouldRetry || attempt >= h.maxRetryAttempts-1 {
+		if !h.shouldRetry(response, err, attempt) {
 			return response, err
 		}
 
@@ -120,4 +101,50 @@ func (h *Fetcher) Fetch(ctx context.Context, url *url.URL) (*http.Response, erro
 			_ = response.Body.Close()
 		}
 	}
+}
+
+func (h *Fetcher) waitBeforeRetry(ctx context.Context) error {
+	timer := time.NewTimer(h.retryDelay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func (h *Fetcher) doRequest(ctx context.Context, url *url.URL) (*http.Response, error) {
+	slog.Debug("Making HTTP request", "url", url.String())
+
+	request, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		url.String(),
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	request.Header.Set("User-Agent", h.userAgent)
+
+	if err := h.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+
+	return h.client.Do(request)
+}
+
+func (h *Fetcher) shouldRetry(response *http.Response, err error, attempt int) bool {
+	if attempt >= h.maxRetryAttempts-1 {
+		return false
+	}
+
+	if err != nil || response == nil {
+		return true
+	}
+
+	return httptools.IsRetryableStatus(response.StatusCode)
 }
