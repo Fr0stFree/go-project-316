@@ -1,3 +1,4 @@
+// Package logger provides configuration for application-wide logging.
 package logger
 
 import (
@@ -5,6 +6,7 @@ import (
 	"os"
 )
 
+// Configure initializes the default logger with a text handler.
 func Configure() {
 	handler := slog.NewTextHandler(
 		os.Stdout,

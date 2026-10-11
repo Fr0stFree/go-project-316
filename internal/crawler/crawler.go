@@ -64,6 +64,7 @@ func WithUserAgent(userAgent string) Option {
 	}
 }
 
+// WithRPS configures the crawler to limit HTTP requests to the specified number of requests per second
 func WithRPS(ctx context.Context, rps int) Option {
 	return func(c *Crawler) error {
 		limiter, err := ratelimiter.NewRPSRateLimiter(ctx, rps)
@@ -77,6 +78,7 @@ func WithRPS(ctx context.Context, rps int) Option {
 	}
 }
 
+// WithDelay configures the crawler to enforce a minimum delay between HTTP requests
 func WithDelay(delay time.Duration) Option {
 	return func(c *Crawler) error {
 		limiter, err := ratelimiter.NewDelayRateLimiter(delay)
@@ -146,7 +148,7 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]TaskResul
 
 	select {
 	case c.pool.Jobs() <- task:
-		state.registerTask()
+		state.increaseTasks()
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -163,22 +165,22 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]TaskResul
 
 			state.completeTask(result)
 
-			if result.Depth >= c.maxDepth {
+			if result.Depth >= c.maxDepth || result.HTML == nil {
 				continue
 			}
 
-			for _, foundURL := range result.FoundURLs {
-				if hasSeen := !state.tryMarkSeen(foundURL); hasSeen {
+			for _, url := range result.HTML.Links {
+				if hasSeen := !state.tryMarkSeen(url); hasSeen {
 					continue
 				}
 
-				task := c.newTaskPayload(foundURL, result.Depth+1)
+				task := c.newTaskPayload(url, result.Depth+1)
 				select {
 				case <-ctx.Done():
 					return nil, ctx.Err()
 
 				case c.pool.Jobs() <- task:
-					state.registerTask()
+					state.increaseTasks()
 				}
 			}
 		}
@@ -224,7 +226,7 @@ func (c *Crawler) process(ctx context.Context, job taskPayload) TaskResult {
 	result.HTTPStatus = response.StatusCode
 	result.Status = response.Status
 
-	page, parseErr := htmlparser.ParsePage(response.Body, job.URL)
+	html, parseErr := htmlparser.Parse(response.Body, job.URL)
 	closeErr := response.Body.Close()
 
 	if parseErr != nil {
@@ -239,7 +241,7 @@ func (c *Crawler) process(ctx context.Context, job taskPayload) TaskResult {
 		return result
 	}
 
-	result.FoundURLs = page.Links
+	result.HTML = html
 
 	return result
 }

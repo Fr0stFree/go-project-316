@@ -31,7 +31,7 @@ func (c *crawlerState) completeTask(result TaskResult) {
 	c.pendingTasks--
 }
 
-func (c *crawlerState) registerTask() {
+func (c *crawlerState) increaseTasks() {
 	c.pendingTasks++
 }
 

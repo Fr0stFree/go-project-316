@@ -1,12 +1,17 @@
+// Package httpfetcher provides HTTP fetching with configurable parameters
 package httpfetcher
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
+	"time"
 )
 
+// Fetcher performs HTTP requests with configurable retries, User-Agent headers, and rate limiting.
 type Fetcher struct {
 	client           *http.Client
 	userAgent        string
@@ -14,7 +19,14 @@ type Fetcher struct {
 	limiter          rateLimiter
 }
 
+// New creates a Fetcher with the specified HTTP client and default settings.
 func New(client *http.Client) *Fetcher {
+	if client == nil {
+		client = &http.Client{
+			Timeout: 5 * time.Second,
+		}
+	}
+
 	return &Fetcher{
 		client:           client,
 		userAgent:        "GoCrawler/1.0",
@@ -23,22 +35,38 @@ func New(client *http.Client) *Fetcher {
 	}
 }
 
+// SetMaxAttempts sets the maximum number of HTTP request attempts.
 func (h *Fetcher) SetMaxAttempts(attempts int) error {
+	if attempts <= 0 {
+		return errors.New("max attempts must be positive")
+	}
+
 	h.maxRetryAttempts = attempts
-	// todo: add validation
+
 	return nil
 }
 
+// SetUserAgent sets the User-Agent header used for HTTP requests.
 func (h *Fetcher) SetUserAgent(userAgent string) error {
+	if strings.TrimSpace(userAgent) == "" {
+		return errors.New("user agent cannot be empty")
+	}
+
 	h.userAgent = userAgent
-	// todo: add validation
+
 	return nil
 }
 
+// SetRateLimiter configures the rate limiter used between retry attempts.
 func (h *Fetcher) SetRateLimiter(limiter rateLimiter) {
+	if limiter == nil {
+		limiter = &noopLimiter{}
+	}
+
 	h.limiter = limiter
 }
 
+// Fetch performs an HTTP GET request to the specified URL.
 func (h *Fetcher) Fetch(ctx context.Context, url *url.URL) (*http.Response, error) {
 	for attempt := 0; ; attempt++ {
 		slog.Debug(
@@ -59,6 +87,10 @@ func (h *Fetcher) Fetch(ctx context.Context, url *url.URL) (*http.Response, erro
 
 		request.Header.Set("User-Agent", h.userAgent)
 
+		if err := h.limiter.Wait(ctx); err != nil {
+			return nil, err
+		}
+
 		response, err := h.client.Do(request)
 
 		shouldRetry := err != nil
@@ -72,10 +104,6 @@ func (h *Fetcher) Fetch(ctx context.Context, url *url.URL) (*http.Response, erro
 
 		if response != nil {
 			_ = response.Body.Close()
-		}
-
-		if err = h.limiter.Wait(ctx); err != nil {
-			return nil, err
 		}
 	}
 }

@@ -1,6 +1,7 @@
 package crawler
 
 import (
+	"code/internal/crawler/htmlparser"
 	"net/url"
 	"time"
 )
@@ -18,6 +19,6 @@ type TaskResult struct {
 	HTTPStatus   int
 	Status       string
 	DiscoveredAt time.Time
-	FoundURLs    []*url.URL
+	HTML         *htmlparser.ParsedHTML
 	Err          error
 }

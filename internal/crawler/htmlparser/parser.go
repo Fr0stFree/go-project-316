@@ -1,61 +1,90 @@
+// Package htmlparser provides utilities for extracting data from html pages.
 package htmlparser
 
 import (
-	"errors"
 	"io"
 	"net/url"
 	"slices"
 
-	"golang.org/x/net/html"
+	"github.com/PuerkitoBio/goquery"
+	"github.com/samber/lo"
 )
 
-type ParsedPage struct {
-	Links []*url.URL
+// ParsedHTML represents links and SEO metadata extracted from an HTML document.
+type ParsedHTML struct {
+	Links       []*url.URL
+	Title       *string
+	Description *string
+	H1          *string
 }
 
-func ParsePage(r io.Reader, pageURL *url.URL) (ParsedPage, error) {
-	page := ParsedPage{Links: make([]*url.URL, 0)}
-
-	baseURL, err := url.Parse(pageURL.String())
+// Parse reads an HTML document and extracts links and SEO metadata.
+func Parse(r io.Reader, pageURL *url.URL) (*ParsedHTML, error) {
+	doc, err := goquery.NewDocumentFromReader(r)
 	if err != nil {
-		return page, err
+		return nil, err
 	}
 
-	tokenizer := html.NewTokenizer(r)
-	for {
-		switch tokenizer.Next() {
-		case html.ErrorToken:
-			if errors.Is(tokenizer.Err(), io.EOF) {
-				return page, nil
-			}
+	page := &ParsedHTML{
+		Links:       collectLinks(doc, pageURL),
+		Title:       findTitle(doc),
+		Description: findDescription(doc),
+		H1:          findHeader(doc),
+	}
 
-			return page, tokenizer.Err()
+	return page, nil
+}
 
-		case html.StartTagToken, html.SelfClosingTagToken:
-			token := tokenizer.Token()
+func collectLinks(doc *goquery.Document, pageURL *url.URL) []*url.URL {
+	links := make([]*url.URL, 0)
 
-			if token.Data != "a" {
-				continue
-			}
-
-			for _, attr := range token.Attr {
-				if attr.Key != "href" || attr.Val == "" {
-					break
-				}
-
-				ref, err := url.Parse(attr.Val)
-				if err != nil {
-					break
-				}
-
-				absoluteURL := baseURL.ResolveReference(ref)
-				if !slices.Contains([]string{"http", "https"}, absoluteURL.Scheme) {
-					break
-				}
-
-				absoluteURL.Fragment = ""
-				page.Links = append(page.Links, absoluteURL)
-			}
+	doc.Find("a[href]").Each(func(_ int, s *goquery.Selection) {
+		href, _ := s.Attr("href")
+		if href == "" {
+			return
 		}
+
+		ref, err := url.Parse(href)
+		if err != nil {
+			return
+		}
+
+		absoluteURL := pageURL.ResolveReference(ref)
+		if !slices.Contains([]string{"http", "https"}, absoluteURL.Scheme) {
+			return
+		}
+
+		absoluteURL.Fragment = ""
+
+		links = append(links, absoluteURL)
+	})
+
+	return links
+}
+
+func findHeader(doc *goquery.Document) *string {
+	h1 := doc.Find("h1").First()
+	if h1.Length() > 0 {
+		return lo.ToPtr(h1.Text())
 	}
+
+	return nil
+}
+
+func findDescription(doc *goquery.Document) *string {
+	description := doc.Find(`meta[name="description"]`).First()
+	if description.Length() > 0 {
+		return lo.ToPtr(description.AttrOr("content", ""))
+	}
+
+	return nil
+}
+
+func findTitle(doc *goquery.Document) *string {
+	title := doc.Find("title").First()
+	if title.Length() > 0 {
+		return lo.ToPtr(title.Text())
+	}
+
+	return nil
 }
