@@ -3,15 +3,14 @@ package report
 import (
 	"code/internal/common/timeutils"
 	"code/internal/crawler"
-	"net/url"
 )
 
-func Build(rootURL string, maxDepth int, results map[*url.URL]crawler.TaskResult) *Report {
+func Build(rootURL string, maxDepth int, results map[string]crawler.TaskResult) *Report {
 	report := &Report{
 		URL:         rootURL,
 		Depth:       maxDepth,
 		GeneratedAt: timeutils.UTCNowPretty(),
-		Pages:       make([]ReportPage, 0, len(results)),
+		Pages:       make([]Page, 0, len(results)),
 	}
 
 	for _, result := range results {
@@ -19,7 +18,7 @@ func Build(rootURL string, maxDepth int, results map[*url.URL]crawler.TaskResult
 			continue
 		}
 
-		report.Pages = append(report.Pages, ReportPage{
+		report.Pages = append(report.Pages, Page{
 			URL:          result.URL.String(),
 			Depth:        result.Depth,
 			HTTPStatus:   result.HTTPStatus,
@@ -32,11 +31,11 @@ func Build(rootURL string, maxDepth int, results map[*url.URL]crawler.TaskResult
 	return report
 }
 
-func brokenLinks(current crawler.TaskResult, all map[*url.URL]crawler.TaskResult) []NodeLink {
+func brokenLinks(current crawler.TaskResult, all map[string]crawler.TaskResult) []NodeLink {
 	brokenLinks := make([]NodeLink, 0)
 
 	for _, url := range current.FoundURLs {
-		target, exists := all[url]
+		target, exists := all[url.String()]
 		if !exists || target.Err == nil {
 			continue
 		}

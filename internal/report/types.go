@@ -4,14 +4,14 @@ import "time"
 
 // Report represents the result of a web crawling operation.
 type Report struct {
-	URL         string       `json:"root_url"`
-	Depth       int          `json:"depth"`
-	GeneratedAt time.Time    `json:"generated_at"`
-	Pages       []ReportPage `json:"pages"`
+	URL         string    `json:"root_url"`
+	Depth       int       `json:"depth"`
+	GeneratedAt time.Time `json:"generated_at"`
+	Pages       []Page    `json:"pages"`
 }
 
 // ReportPage represents a single crawled page.
-type ReportPage struct {
+type Page struct {
 	URL          string     `json:"url"`
 	Depth        int        `json:"depth"`
 	HTTPStatus   int        `json:"http_status"`

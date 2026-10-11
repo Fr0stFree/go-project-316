@@ -17,8 +17,6 @@ import (
 
 // Crawler manages concurrent web crawling and tracks discovered URLs and results.
 type Crawler struct {
-	seenUrls map[*url.URL]struct{}
-	results  map[*url.URL]TaskResult
 	fetcher  *httpfetcher.Fetcher
 	pool     *workerpool.WorkerPool[taskPayload, TaskResult]
 	poolSize int
@@ -107,8 +105,6 @@ func WithMaxAttempts(maxAttempts int) Option {
 // New creates a Crawler with the specified HTTP client, worker count, and maximum crawl depth.
 func New(client *http.Client, opts ...Option) (*Crawler, error) {
 	c := &Crawler{
-		seenUrls: make(map[*url.URL]struct{}),
-		results:  make(map[*url.URL]TaskResult),
 		maxDepth: 3,
 		fetcher:  httpfetcher.New(client),
 		pool:     workerpool.New[taskPayload, TaskResult](),
@@ -123,34 +119,20 @@ func New(client *http.Client, opts ...Option) (*Crawler, error) {
 	return c, nil
 }
 
-type taskPayload struct {
-	URL          *url.URL
-	Depth        int
-	DiscoveredAt time.Time
-}
-
-func newTaskPayload(url *url.URL, depth int) *taskPayload {
-	return &taskPayload{
-		URL:          url,
-		Depth:        depth,
-		DiscoveredAt: timeutils.UTCNowPretty(),
-	}
-}
-
-// TaskResult represents the result of processing a single crawl task.
-type TaskResult struct {
-	URL          *url.URL
-	Depth        int
-	HTTPStatus   int
-	Status       string
-	DiscoveredAt time.Time
-	FoundURLs    []*url.URL
-	Err          error
-}
-
 // Run crawls pages starting from rootURL up to the configured maximum depth.
 // It returns the collected results or an error if the context is canceled.
-func (c *Crawler) Run(ctx context.Context, rootURL string) (map[*url.URL]TaskResult, error) {
+func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]TaskResult, error) {
+	state := newCrawlerState()
+	startedAt := time.Now()
+
+	slog.DebugContext(
+		ctx,
+		"Running crawler...",
+		"maxDepth", c.maxDepth,
+		"poolSize", c.poolSize,
+		"rootURL", rootURL,
+	)
+
 	stopPool := c.pool.Start(ctx, c.process, c.poolSize)
 	defer stopPool()
 
@@ -159,49 +141,62 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[*url.URL]TaskRes
 		return nil, err
 	}
 
-	c.seenUrls[parsedRootURL] = struct{}{}
-	task := *newTaskPayload(parsedRootURL, 0)
+	state.tryMarkSeen(parsedRootURL)
+	task := c.newTaskPayload(parsedRootURL, 0)
 
-	c.pool.Jobs() <- task
+	select {
+	case c.pool.Jobs() <- task:
+		state.registerTask()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 
-	runningTasks := 1
-	for runningTasks > 0 {
+	for state.hasTasks() {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 
-		case result := <-c.pool.Results():
-			runningTasks--
+		case result, ok := <-c.pool.Results():
+			if !ok {
+				return nil, errors.New("worker pool stopped unexpectedly")
+			}
 
-			c.results[result.URL] = result
+			state.completeTask(result)
+
 			if result.Depth >= c.maxDepth {
 				continue
 			}
 
 			for _, foundURL := range result.FoundURLs {
-				if _, hasSeen := c.seenUrls[foundURL]; hasSeen {
+				if hasSeen := !state.tryMarkSeen(foundURL); hasSeen {
 					continue
 				}
 
-				c.seenUrls[foundURL] = struct{}{}
-
-				job := *newTaskPayload(foundURL, result.Depth+1)
+				task := c.newTaskPayload(foundURL, result.Depth+1)
 				select {
 				case <-ctx.Done():
 					return nil, ctx.Err()
 
-				case c.pool.Jobs() <- job:
-					runningTasks++
+				case c.pool.Jobs() <- task:
+					state.registerTask()
 				}
 			}
 		}
 	}
 
-	return c.results, nil
+	slog.DebugContext(
+		ctx,
+		"Finished processing urls",
+		"duration", time.Since(startedAt),
+		"urlsAmount", len(state.seenURLs),
+	)
+
+	return state.results, nil
 }
 
 func (c *Crawler) process(ctx context.Context, job taskPayload) TaskResult {
-	slog.Debug(
+	slog.DebugContext(
+		ctx,
 		"Processing URL",
 		"url", job.URL,
 		"depth", job.Depth,
@@ -216,6 +211,12 @@ func (c *Crawler) process(ctx context.Context, job taskPayload) TaskResult {
 	response, respErr := c.fetcher.Fetch(ctx, job.URL)
 	if respErr != nil {
 		result.Err = respErr
+		slog.DebugContext(
+			ctx,
+			"Failed to fetch url",
+			"url", job.URL.String(),
+			"err", respErr.Error(),
+		)
 
 		return result
 	}
@@ -241,4 +242,12 @@ func (c *Crawler) process(ctx context.Context, job taskPayload) TaskResult {
 	result.FoundURLs = page.Links
 
 	return result
+}
+
+func (c *Crawler) newTaskPayload(url *url.URL, depth int) taskPayload {
+	return taskPayload{
+		URL:          url,
+		Depth:        depth,
+		DiscoveredAt: timeutils.UTCNowPretty(),
+	}
 }
