@@ -2,6 +2,7 @@
 package httpfetcher
 
 import (
+	"code/internal/common/httptools"
 	"context"
 	"errors"
 	"log/slog"
@@ -108,7 +109,7 @@ func (h *Fetcher) Fetch(ctx context.Context, url *url.URL) (*http.Response, erro
 
 		shouldRetry := err != nil
 		if err == nil {
-			shouldRetry = isRetryableStatus(response.StatusCode)
+			shouldRetry = httptools.IsRetryableStatus(response.StatusCode)
 		}
 
 		if !shouldRetry || attempt >= h.maxRetryAttempts-1 {
@@ -118,18 +119,5 @@ func (h *Fetcher) Fetch(ctx context.Context, url *url.URL) (*http.Response, erro
 		if response != nil {
 			_ = response.Body.Close()
 		}
-	}
-}
-
-func isRetryableStatus(status int) bool {
-	switch status {
-	case http.StatusTooManyRequests,
-		http.StatusInternalServerError,
-		http.StatusBadGateway,
-		http.StatusServiceUnavailable,
-		http.StatusGatewayTimeout:
-		return true
-	default:
-		return false
 	}
 }

@@ -2,6 +2,7 @@
 package crawler
 
 import (
+	"code/internal/common/httptools"
 	"code/internal/common/timeutils"
 	"code/internal/crawler/htmlparser"
 	"code/internal/crawler/httpfetcher"
@@ -206,6 +207,10 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]TaskResul
 
 			for _, url := range result.HTML.Links {
 				if hasSeen := !state.tryMarkSeen(url); hasSeen {
+					continue
+				}
+
+				if !httptools.IsSameDomain(parsedRootURL, url) {
 					continue
 				}
 
