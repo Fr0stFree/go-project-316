@@ -64,31 +64,58 @@ func WithUserAgent(userAgent string) Option {
 	}
 }
 
+// WithTimeout sets the timeout for every HTTP request.
+func WithTimeout(timeout string) Option {
+	return func(c *Crawler) error {
+		duration, err := time.ParseDuration(timeout)
+		if err != nil {
+			return err
+		}
+
+		err = c.fetcher.SetTimeout(duration)
+
+		return err
+	}
+}
+
 // WithRPS configures the crawler to limit HTTP requests to the specified number of requests per second
 func WithRPS(ctx context.Context, rps int) Option {
 	return func(c *Crawler) error {
+		if rps == 0 {
+			return nil
+		}
+
 		limiter, err := ratelimiter.NewRPSRateLimiter(ctx, rps)
 		if err != nil {
 			return err
 		}
 
-		c.fetcher.SetRateLimiter(limiter)
+		err = c.fetcher.SetRateLimiter(limiter)
 
-		return nil
+		return err
 	}
 }
 
 // WithDelay configures the crawler to enforce a minimum delay between HTTP requests
-func WithDelay(delay time.Duration) Option {
+func WithDelay(delay string) Option {
 	return func(c *Crawler) error {
-		limiter, err := ratelimiter.NewDelayRateLimiter(delay)
+		duration, err := time.ParseDuration(delay)
 		if err != nil {
 			return err
 		}
 
-		c.fetcher.SetRateLimiter(limiter)
+		if duration == time.Duration(0) {
+			return nil
+		}
 
-		return nil
+		limiter, err := ratelimiter.NewDelayRateLimiter(duration)
+		if err != nil {
+			return err
+		}
+
+		err = c.fetcher.SetRateLimiter(limiter)
+
+		return err
 	}
 }
 

@@ -58,12 +58,25 @@ func (h *Fetcher) SetUserAgent(userAgent string) error {
 }
 
 // SetRateLimiter configures the rate limiter used between retry attempts.
-func (h *Fetcher) SetRateLimiter(limiter rateLimiter) {
+func (h *Fetcher) SetRateLimiter(limiter rateLimiter) error {
 	if limiter == nil {
-		limiter = &noopLimiter{}
+		return errors.New("expected a limiter, got nil")
 	}
 
 	h.limiter = limiter
+
+	return nil
+}
+
+// SetTimeout configures the timeout for every HTTP request.
+func (h *Fetcher) SetTimeout(timeout time.Duration) error {
+	if timeout <= time.Duration(0) {
+		return errors.New("timeout cannot be negative")
+	}
+
+	h.client.Timeout = timeout
+
+	return nil
 }
 
 // Fetch performs an HTTP GET request to the specified URL.

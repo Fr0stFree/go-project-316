@@ -18,6 +18,7 @@ type Options struct {
 	Depth       int
 	Retries     int
 	Delay       string
+	RPS         int
 	Timeout     string
 	UserAgent   string
 	Concurrency int
@@ -29,22 +30,25 @@ type Options struct {
 func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	logger.Configure()
 
-	crawler, err := crawler.New(
+	crawl, err := crawler.New(
 		opts.HTTPClient,
 		crawler.WithUserAgent(opts.UserAgent),
-		crawler.WithPoolSize(opts.Concurrency),
+		crawler.WithMaxAttempts(opts.Retries),
 		crawler.WithMaxDepth(opts.Depth),
+		crawler.WithPoolSize(opts.Concurrency),
+		crawler.WithDelay(opts.Delay),
+		crawler.WithRPS(ctx, opts.RPS),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	crawledResults, err := crawler.Run(ctx, opts.URL)
+	crawlResults, err := crawl.Run(ctx, opts.URL)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		return nil, err
 	}
 
-	report := report.Build(opts.URL, opts.Depth, crawledResults)
+	report := report.Build(opts.URL, opts.Depth, crawlResults)
 
 	data, err := fmttools.ToJSON(report, opts.IndentJSON)
 	if err != nil {
