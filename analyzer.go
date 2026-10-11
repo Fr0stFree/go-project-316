@@ -4,11 +4,9 @@ package code
 import (
 	"context"
 	"net/http"
-	"os"
-
-	"log/slog"
 
 	"code/internal/common/fmttools"
+	"code/internal/common/logger"
 	"code/internal/crawler"
 	"code/internal/report"
 )
@@ -28,7 +26,7 @@ type Options struct {
 
 // Analyze crawls the configured URL and returns the resulting report as JSON.
 func Analyze(ctx context.Context, opts Options) ([]byte, error) {
-	configureLogger()
+	logger.Configure()
 
 	crawler, err := crawler.New(
 		opts.HTTPClient,
@@ -48,15 +46,4 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	report := report.Build(opts.URL, opts.Depth, crawledResults)
 
 	return fmttools.ToJSON(report, opts.IndentJSON)
-}
-
-func configureLogger() {
-	handler := slog.NewTextHandler(
-		os.Stdout,
-		&slog.HandlerOptions{
-			Level: slog.LevelDebug,
-		},
-	)
-
-	slog.SetDefault(slog.New(handler))
 }
