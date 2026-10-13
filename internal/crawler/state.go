@@ -1,12 +1,13 @@
 package crawler
 
 import (
+	"container/list"
 	"errors"
 	"net/url"
 )
 
 type crawlerState struct {
-	pending []task
+	pending list.List
 	running int
 
 	seenPages  map[string]struct{}
@@ -26,7 +27,7 @@ func newCrawlerState() *crawlerState {
 }
 
 func (s *crawlerState) hasWork() bool {
-	return len(s.pending) > 0 || s.running > 0
+	return s.pending.Len() > 0 || s.running > 0
 }
 
 func (s *crawlerState) markPageSeen(url *url.URL) bool {

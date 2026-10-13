@@ -157,7 +157,7 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]Result, e
 	state.markPageSeen(root)
 
 	firstTask := task{url: root, kind: pageTask}
-	state.pending = append(state.pending, firstTask)
+	state.pending.PushBack(firstTask)
 
 	stop := c.pool.Start(ctx, c.process, c.poolSize)
 	defer stop()
@@ -173,21 +173,21 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]Result, e
 
 func (c *Crawler) runIteration(ctx context.Context, root *url.URL, state *crawlerState) error {
 	var (
-		tasks chan<- task
-		next  task
+		tasks    chan<- task
+		nextTask task
 	)
 
-	if len(state.pending) > 0 {
+	if next := state.pending.Front(); next != nil {
 		tasks = c.pool.Tasks()
-		next = state.pending[0]
+		nextTask = next.Value.(task)
 	}
 
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 
-	case tasks <- next:
-		state.pending = state.pending[1:]
+	case tasks <- nextTask:
+		state.pending.Remove(state.pending.Front())
 		state.running++
 
 	case result, ok := <-c.pool.Results():
@@ -226,10 +226,7 @@ func (c *Crawler) handlePageResult(root *url.URL, state *crawlerState, result pa
 			continue
 		}
 
-		state.pending = append(state.pending, task{
-			url:  asset.URL,
-			kind: assetTask,
-		})
+		state.pending.PushBack(task{url: asset.URL, kind: assetTask})
 	}
 
 	if result.depth >= c.maxDepth {
@@ -245,10 +242,6 @@ func (c *Crawler) handlePageResult(root *url.URL, state *crawlerState, result pa
 			continue
 		}
 
-		state.pending = append(state.pending, task{
-			url:   link,
-			depth: result.depth + 1,
-			kind:  pageTask,
-		})
+		state.pending.PushBack(task{url: link, depth: result.depth + 1, kind: pageTask})
 	}
 }
