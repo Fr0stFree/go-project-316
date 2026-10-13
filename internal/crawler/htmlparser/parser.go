@@ -2,6 +2,7 @@
 package htmlparser
 
 import (
+	"errors"
 	"io"
 	"net/url"
 	"slices"
@@ -10,9 +11,28 @@ import (
 	"github.com/samber/lo"
 )
 
+// AssetType represents the type of a resource referenced by an HTML page.
+type AssetType string
+
+const (
+	// AssetImage represents an image resource.
+	AssetImage AssetType = "image"
+	// AssetScript represents a JavaScript resource.
+	AssetScript AssetType = "script"
+	// AssetStyle represents a CSS stylesheet.
+	AssetStyle AssetType = "style"
+)
+
+// Asset represents a resource referenced by an HTML page.
+type Asset struct {
+	Type AssetType
+	URL  *url.URL
+}
+
 // ParsedHTML represents links and SEO metadata extracted from an HTML document.
 type ParsedHTML struct {
 	Links       []*url.URL
+	Assets      []Asset
 	Title       *string
 	Description *string
 	H1          *string
@@ -26,7 +46,8 @@ func Parse(r io.Reader, pageURL *url.URL) (*ParsedHTML, error) {
 	}
 
 	page := &ParsedHTML{
-		Links:       collectLinks(doc, pageURL),
+		Links:       findLinks(doc, pageURL),
+		Assets:      slices.Concat(findImages(doc, pageURL), findScripts(doc, pageURL), findStyles(doc, pageURL)),
 		Title:       findTitle(doc),
 		Description: findDescription(doc),
 		H1:          findHeader(doc),
@@ -35,26 +56,19 @@ func Parse(r io.Reader, pageURL *url.URL) (*ParsedHTML, error) {
 	return page, nil
 }
 
-func collectLinks(doc *goquery.Document, pageURL *url.URL) []*url.URL {
+func findLinks(doc *goquery.Document, pageURL *url.URL) []*url.URL {
 	links := make([]*url.URL, 0)
 
 	doc.Find("a[href]").Each(func(_ int, s *goquery.Selection) {
-		href, _ := s.Attr("href")
-		if href == "" {
+		rawURL, _ := s.Attr("href")
+		if rawURL == "" {
 			return
 		}
 
-		ref, err := url.Parse(href)
+		absoluteURL, err := resolveURL(rawURL, pageURL)
 		if err != nil {
 			return
 		}
-
-		absoluteURL := pageURL.ResolveReference(ref)
-		if !slices.Contains([]string{"http", "https"}, absoluteURL.Scheme) {
-			return
-		}
-
-		absoluteURL.Fragment = ""
 
 		links = append(links, absoluteURL)
 	})
@@ -87,4 +101,88 @@ func findTitle(doc *goquery.Document) *string {
 	}
 
 	return nil
+}
+
+func findImages(doc *goquery.Document, pageURL *url.URL) []Asset {
+	var assets []Asset
+
+	doc.Find("img[src]").Each(func(_ int, s *goquery.Selection) {
+		rawURL, _ := s.Attr("src")
+		if rawURL == "" {
+			return
+		}
+
+		absoluteURL, err := resolveURL(rawURL, pageURL)
+		if err != nil {
+			return
+		}
+
+		asset := Asset{Type: AssetImage, URL: absoluteURL}
+		assets = append(assets, asset)
+	})
+
+	return assets
+}
+
+func findScripts(doc *goquery.Document, pageURL *url.URL) []Asset {
+	var assets []Asset
+
+	doc.Find("script[src]").Each(func(_ int, s *goquery.Selection) {
+		rawURL, _ := s.Attr("src")
+		if rawURL == "" {
+			return
+		}
+
+		absoluteURL, err := resolveURL(rawURL, pageURL)
+		if err != nil {
+			return
+		}
+
+		asset := Asset{Type: AssetScript, URL: absoluteURL}
+		assets = append(assets, asset)
+	})
+
+	return assets
+}
+
+func findStyles(doc *goquery.Document, pageURL *url.URL) []Asset {
+	var assets []Asset
+
+	doc.Find(`link[rel~="stylesheet"][href]`).Each(func(_ int, s *goquery.Selection) {
+		rawURL, _ := s.Attr("href")
+		if rawURL == "" {
+			return
+		}
+
+		absoluteURL, err := resolveURL(rawURL, pageURL)
+		if err != nil {
+			return
+		}
+
+		asset := Asset{Type: AssetStyle, URL: absoluteURL}
+		assets = append(assets, asset)
+	})
+
+	return assets
+}
+
+func resolveURL(rawURL string, pageURL *url.URL) (*url.URL, error) {
+	ref, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+
+	absoluteURL := pageURL.ResolveReference(ref)
+
+	if absoluteURL.Scheme != "http" && absoluteURL.Scheme != "https" {
+		return nil, errors.New("unsupported URL scheme")
+	}
+
+	if absoluteURL.Host == "" {
+		return nil, errors.New("URL host is empty")
+	}
+
+	absoluteURL.Fragment = ""
+
+	return absoluteURL, nil
 }

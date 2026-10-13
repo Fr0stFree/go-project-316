@@ -5,12 +5,15 @@ import (
 	"code/internal/common/timeutils"
 	"code/internal/crawler"
 	"code/internal/crawler/htmlparser"
+	"net/url"
+	"slices"
+	"strings"
 
 	"github.com/samber/lo"
 )
 
 // Build creates a crawl report from the collected task results.
-func Build(rootURL string, maxDepth int, results map[string]crawler.TaskResult) *Report {
+func Build(rootURL string, maxDepth int, results map[string]crawler.Result) *Report {
 	report := &Report{
 		URL:         rootURL,
 		Depth:       maxDepth,
@@ -27,10 +30,15 @@ func Build(rootURL string, maxDepth int, results map[string]crawler.TaskResult) 
 			DiscoveredAt: result.DiscoveredAt,
 			BrokenLinks:  buildBrokenLinks(result, results),
 			SEO:          buildSEO(result.HTML),
+			Assets:       buildAssets(result.Assets),
 		}
 
 		report.Pages = append(report.Pages, page)
 	}
+
+	slices.SortFunc(report.Pages, func(a, b Page) int {
+		return strings.Compare(a.URL, b.URL)
+	})
 
 	return report
 }
@@ -49,34 +57,42 @@ func buildSEO(html *htmlparser.ParsedHTML) SEO {
 	}
 }
 
-func buildBrokenLinks(current crawler.TaskResult, all map[string]crawler.TaskResult) []NodeLink {
-	links := make([]NodeLink, 0)
-
+func buildBrokenLinks(current crawler.Result, all map[string]crawler.Result) []NodeLink {
 	if current.HTML == nil {
-		return links
+		return []NodeLink{}
 	}
 
-	for _, url := range current.HTML.Links {
-		target, exists := all[url.String()]
-		if !exists {
-			continue
+	return lo.FilterMap(current.HTML.Links, func(link *url.URL, _ int) (NodeLink, bool) {
+		target, exists := all[link.String()]
+		if !exists || (target.Err == nil && target.HTTPStatus < 400) {
+			return NodeLink{}, false
 		}
 
-		if target.Err == nil && target.HTTPStatus < 400 {
-			continue
-		}
-
-		link := NodeLink{
-			URL:        url.String(),
+		return NodeLink{
+			URL:        link.String(),
 			StatusCode: target.HTTPStatus,
-		}
+			Error:      errToStr(target.Err),
+		}, true
+	})
+}
 
-		if target.Err != nil {
-			link.Error = target.Err.Error()
+func buildAssets(assets []crawler.AssetResult) []Asset {
+	return lo.Map(assets, func(asset crawler.AssetResult, _ int) Asset {
+		return Asset{
+			URL:        asset.URL,
+			Type:       string(asset.Type),
+			StatusCode: asset.StatusCode,
+			SizeBytes:  asset.SizeBytes,
+			Error:      errToStr(asset.Error),
 		}
+	})
+}
 
-		links = append(links, link)
+func errToStr(err error) string {
+	switch err {
+	case nil:
+		return ""
+	default:
+		return err.Error()
 	}
-
-	return links
 }

@@ -3,14 +3,11 @@ package crawler
 
 import (
 	"code/internal/common/httptools"
-	"code/internal/common/timeutils"
-	"code/internal/crawler/htmlparser"
 	"code/internal/crawler/httpfetcher"
 	"code/internal/crawler/ratelimiter"
 	"code/internal/crawler/workerpool"
 	"context"
 	"errors"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -19,7 +16,7 @@ import (
 // Crawler manages concurrent web crawling and tracks discovered URLs and results.
 type Crawler struct {
 	fetcher  *httpfetcher.Fetcher
-	pool     *workerpool.WorkerPool[taskPayload, TaskResult]
+	pool     *workerpool.WorkerPool[task, taskResult]
 	poolSize int
 	maxDepth int
 }
@@ -137,7 +134,7 @@ func New(client *http.Client, opts ...Option) (*Crawler, error) {
 	c := &Crawler{
 		maxDepth: 3,
 		fetcher:  httpfetcher.New(client),
-		pool:     workerpool.New[taskPayload, TaskResult](),
+		pool:     workerpool.New[task, taskResult](),
 		poolSize: 3,
 	}
 	for _, opt := range opts {
@@ -150,139 +147,108 @@ func New(client *http.Client, opts ...Option) (*Crawler, error) {
 }
 
 // Run crawls pages starting from rootURL up to the configured maximum depth.
-func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]TaskResult, error) {
-	state := newCrawlerState()
-	startedAt := time.Now()
-
-	slog.DebugContext(
-		ctx,
-		"Running crawler...",
-		"maxDepth", c.maxDepth,
-		"poolSize", c.poolSize,
-		"rootURL", rootURL,
-	)
-
-	stopPool := c.pool.Start(ctx, c.process, c.poolSize)
-	defer stopPool()
-
-	defer func() {
-		slog.DebugContext(
-			ctx,
-			"Finished processing urls",
-			"duration", time.Since(startedAt),
-			"urlsAmount", len(state.seenURLs),
-		)
-	}()
-
-	parsedRootURL, err := url.Parse(rootURL)
+func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]Result, error) {
+	root, err := url.Parse(rootURL)
 	if err != nil {
 		return nil, err
 	}
 
-	state.tryMarkSeen(parsedRootURL)
-	task := c.newTaskPayload(parsedRootURL, 0)
+	state := newCrawlerState()
+	state.markPageSeen(root)
 
-	select {
-	case c.pool.Jobs() <- task:
-		state.increaseTasks()
-	case <-ctx.Done():
-		return state.results, ctx.Err()
-	}
+	firstTask := task{url: root, kind: pageTask}
+	state.pending = append(state.pending, firstTask)
 
-	for state.hasTasks() {
-		select {
-		case <-ctx.Done():
-			return state.results, ctx.Err()
+	stop := c.pool.Start(ctx, c.process, c.poolSize)
+	defer stop()
 
-		case result, ok := <-c.pool.Results():
-			if !ok {
-				return state.results, errors.New("worker pool stopped unexpectedly")
-			}
-
-			state.completeTask(result)
-
-			if result.Depth >= c.maxDepth || result.HTML == nil {
-				continue
-			}
-
-			for _, url := range result.HTML.Links {
-				if hasSeen := !state.tryMarkSeen(url); hasSeen {
-					continue
-				}
-
-				if !httptools.IsSameDomain(parsedRootURL, url) {
-					continue
-				}
-
-				task := c.newTaskPayload(url, result.Depth+1)
-				select {
-				case <-ctx.Done():
-					return state.results, ctx.Err()
-
-				case c.pool.Jobs() <- task:
-					state.increaseTasks()
-				}
-			}
+	for state.hasWork() {
+		if err := c.runIteration(ctx, root, state); err != nil {
+			return state.mergedResults(), err
 		}
 	}
 
-	return state.results, nil
+	return state.mergedResults(), nil
 }
 
-func (c *Crawler) process(ctx context.Context, job taskPayload) TaskResult {
-	slog.DebugContext(
-		ctx,
-		"Processing URL",
-		"url", job.URL,
-		"depth", job.Depth,
+func (c *Crawler) runIteration(ctx context.Context, root *url.URL, state *crawlerState) error {
+	var (
+		tasks chan<- task
+		next  task
 	)
 
-	result := TaskResult{
-		URL:          job.URL,
-		Depth:        job.Depth,
-		DiscoveredAt: job.DiscoveredAt,
+	if len(state.pending) > 0 {
+		tasks = c.pool.Tasks()
+		next = state.pending[0]
 	}
 
-	response, respErr := c.fetcher.Fetch(ctx, job.URL)
-	if respErr != nil {
-		result.Err = respErr
-		slog.DebugContext(
-			ctx,
-			"Failed to fetch url",
-			"url", job.URL.String(),
-			"err", respErr.Error(),
-		)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
 
-		return result
+	case tasks <- next:
+		state.pending = state.pending[1:]
+		state.running++
+
+	case result, ok := <-c.pool.Results():
+		if !ok {
+			return errors.New("worker pool stopped unexpectedly")
+		}
+
+		state.running--
+
+		switch {
+		case result.page != nil:
+			c.handlePageResult(root, state, *result.page)
+
+		case result.asset != nil:
+			c.handleAssetResult(state, *result.asset)
+		default:
+			return errors.New("worker returned an empty result")
+		}
 	}
 
-	result.HTTPStatus = response.StatusCode
-	result.Status = response.Status
-
-	html, parseErr := htmlparser.Parse(response.Body, job.URL)
-	closeErr := response.Body.Close()
-
-	if parseErr != nil {
-		result.Err = parseErr
-
-		return result
-	}
-
-	if closeErr != nil {
-		result.Err = closeErr
-
-		return result
-	}
-
-	result.HTML = html
-
-	return result
+	return nil
 }
 
-func (c *Crawler) newTaskPayload(url *url.URL, depth int) taskPayload {
-	return taskPayload{
-		URL:          url,
-		Depth:        depth,
-		DiscoveredAt: timeutils.UTCNowPretty(),
+func (c *Crawler) handleAssetResult(state *crawlerState, result assetTaskResult) {
+	state.assets[result.url.String()] = result
+}
+func (c *Crawler) handlePageResult(root *url.URL, state *crawlerState, result pageTaskResult) {
+	state.pages[result.url.String()] = result
+
+	if result.html == nil {
+		return
+	}
+
+	for _, asset := range result.html.Assets {
+		if !state.markAssetSeen(asset.URL) {
+			continue
+		}
+
+		state.pending = append(state.pending, task{
+			url:  asset.URL,
+			kind: assetTask,
+		})
+	}
+
+	if result.depth >= c.maxDepth {
+		return
+	}
+
+	for _, link := range result.html.Links {
+		if !httptools.IsSameDomain(root, link) {
+			continue
+		}
+
+		if !state.markPageSeen(link) {
+			continue
+		}
+
+		state.pending = append(state.pending, task{
+			url:   link,
+			depth: result.depth + 1,
+			kind:  pageTask,
+		})
 	}
 }

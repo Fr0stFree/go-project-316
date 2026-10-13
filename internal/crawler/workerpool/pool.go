@@ -8,7 +8,7 @@ import (
 
 // WorkerPool processes jobs concurrently using a fixed number of workers.
 type WorkerPool[T, R any] struct {
-	jobs    chan T
+	tasks   chan T
 	results chan R
 }
 
@@ -16,14 +16,14 @@ type WorkerPool[T, R any] struct {
 // and a function for processing each job.
 func New[T, R any]() *WorkerPool[T, R] {
 	return &WorkerPool[T, R]{
-		jobs:    make(chan T, 100), // TODO: hide?
+		tasks:   make(chan T, 100), // TODO: hide?
 		results: make(chan R, 100),
 	}
 }
 
-// Jobs returns a send-only channel for submitting jobs to the pool.
-func (p *WorkerPool[T, R]) Jobs() chan<- T {
-	return p.jobs
+// Tasks returns a send-only channel for submitting jobs to the pool.
+func (p *WorkerPool[T, R]) Tasks() chan<- T {
+	return p.tasks
 }
 
 // Results returns a receive-only channel for collecting processed results.
@@ -51,7 +51,7 @@ func (p *WorkerPool[T, R]) Start(
 				select {
 				case <-ctx.Done():
 					return
-				case job, ok := <-p.jobs:
+				case job, ok := <-p.tasks:
 					if !ok {
 						return
 					}
