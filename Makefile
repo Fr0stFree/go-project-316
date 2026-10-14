@@ -3,7 +3,7 @@ GOLANGCI_LINT := $(shell go env GOPATH)/bin/golangci-lint
 GOLANGCI_LINT_CONFIG := .golangci.yml
 
 BINARY_PATH := ./bin/crawler
-ENTRYPOINT_PATH := ./cmd/crawler
+ENTRYPOINT_PATH := ./cmd/hexlet-go-crawler
 COVERAGE_PROFILE := coverage.out
 
 .PHONY: \
