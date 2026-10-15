@@ -1,12 +1,12 @@
 package crawler
 
 import (
-	"code/internal/common/httptools"
 	"code/internal/common/timeutils"
 	"code/internal/crawler/htmlparser"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -109,8 +109,17 @@ func (c *Crawler) processAsset(ctx context.Context, assetURL *url.URL) assetTask
 		result.err = fmt.Errorf("unexpected HTTP status: %d", response.StatusCode)
 	}
 
-	size, err := httptools.MeasureRespBodySize(response)
-	result.sizeBytes = size
+	var size int64
+	if response.ContentLength >= 0 {
+		size = response.ContentLength
+	} else {
+		size, err = io.Copy(io.Discard, response.Body)
+		if err != nil {
+			result.err = err
+		}
+	}
+
+	result.sizeBytes = int(size)
 
 	if err != nil {
 		result.err = errors.Join(result.err, err)
