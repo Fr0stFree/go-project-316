@@ -1,5 +1,5 @@
-// Package code provides functionality for web crawling and analysis.
-package code
+// Package crawler provides functionality for web crawling and analysis.
+package crawler
 
 import (
 	"context"

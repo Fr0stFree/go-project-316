@@ -8,7 +8,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
-	"code"
+	"code/crawler"
 )
 
 var cliArgs = []cli.Argument{
@@ -74,7 +74,7 @@ var cliFlags = []cli.Flag{
 func cliAction(ctx context.Context, cmd *cli.Command) error {
 	url := cmd.StringArg("url")
 
-	opts := code.Options{
+	opts := crawler.Options{
 		URL:         url,
 		Depth:       cmd.Int("depth"),
 		Retries:     cmd.Int("retries"),
@@ -86,7 +86,7 @@ func cliAction(ctx context.Context, cmd *cli.Command) error {
 		Verbose:     cmd.Bool("verbose"),
 	}
 
-	report, err := code.Analyze(ctx, opts)
+	report, err := crawler.Analyze(ctx, opts)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		return cli.Exit(fmt.Sprintf("something went wrong during analysis of `%s`: %v", url, err), 1)
 	}
