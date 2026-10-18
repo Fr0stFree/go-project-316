@@ -22,6 +22,12 @@ type Crawler struct {
 	maxDepth int
 }
 
+const (
+	defaultMaxDepth   = 3
+	defaultPoolSize   = 3
+	defaultBufferSize = 100
+)
+
 // Option configures a Crawler and returns an error if the configuration is invalid.
 type Option func(*Crawler) error
 
@@ -137,10 +143,10 @@ func WithMaxAttempts(maxAttempts int) Option {
 // New creates a Crawler with the specified HTTP client, worker count, and maximum crawl depth.
 func New(client *http.Client, opts ...Option) (*Crawler, error) {
 	c := &Crawler{
-		maxDepth: 3,
+		maxDepth: defaultMaxDepth,
 		fetcher:  httpfetcher.New(client),
-		pool:     workerpool.New[task, taskResult](),
-		poolSize: 3,
+		pool:     workerpool.New[task, taskResult](defaultBufferSize),
+		poolSize: defaultPoolSize,
 	}
 	for _, opt := range opts {
 		if err := opt(c); err != nil {

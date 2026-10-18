@@ -22,20 +22,28 @@ type Fetcher struct {
 	retryDelay       time.Duration
 }
 
+const (
+	defaultRequestTimeout = 5 * time.Second
+	defaultUserAgent      = "GoCrawler/1.0"
+	defaultMaxAttempts    = 1
+	defaultBufferSize     = 100
+	defaultRetryDelay     = 1 * time.Second
+)
+
 // New creates a Fetcher with the specified HTTP client and default settings.
 func New(client *http.Client) *Fetcher {
 	if client == nil {
 		client = &http.Client{
-			Timeout: 5 * time.Second,
+			Timeout: defaultRequestTimeout,
 		}
 	}
 
 	return &Fetcher{
 		client:           client,
-		userAgent:        "GoCrawler/1.0",
-		maxRetryAttempts: 1,
+		userAgent:        defaultUserAgent,
+		maxRetryAttempts: defaultMaxAttempts,
 		limiter:          &noopLimiter{},
-		retryDelay:       1 * time.Second,
+		retryDelay:       defaultRetryDelay,
 	}
 }
 

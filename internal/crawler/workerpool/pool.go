@@ -12,12 +12,11 @@ type WorkerPool[T, R any] struct {
 	results chan R
 }
 
-// New creates a WorkerPool with the specified number of workers
-// and a function for processing each job.
-func New[T, R any]() *WorkerPool[T, R] {
+// New creates a WorkerPool with the specified channel sizes for tasks and results.
+func New[T, R any](bufferSize int) *WorkerPool[T, R] {
 	return &WorkerPool[T, R]{
-		tasks:   make(chan T, 100), // TODO: hide?
-		results: make(chan R, 100),
+		tasks:   make(chan T, bufferSize),
+		results: make(chan R, bufferSize),
 	}
 }
 
