@@ -30,7 +30,12 @@ func (s *crawlerState) hasWork() bool {
 }
 
 func (s *crawlerState) markPageSeen(url *url.URL) bool {
-	key := url.String()
+	clonedURL := *url
+	if clonedURL.Path == "" {
+		clonedURL.Path = "/"
+	}
+
+	key := clonedURL.String()
 
 	if _, exists := s.seenPages[key]; exists {
 		return false

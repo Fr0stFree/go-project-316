@@ -45,10 +45,6 @@ func WithPoolSize(size int) Option {
 // WithMaxDepth sets the maximum crawling depth.
 func WithMaxDepth(depth int) Option {
 	return func(c *Crawler) error {
-		if depth == 0 {
-			return nil
-		}
-
 		if depth < 0 {
 			return errors.New("max depth cannot be negative")
 		}
@@ -240,7 +236,7 @@ func (c *Crawler) handlePageResult(root *url.URL, state *crawlerState, result pa
 		state.pending.PushBack(task{url: asset.URL, kind: assetTask})
 	}
 
-	if result.depth >= c.maxDepth {
+	if result.depth+1 >= c.maxDepth {
 		return
 	}
 

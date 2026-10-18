@@ -13,6 +13,11 @@ import (
 	"code/internal/crawler/htmlparser"
 )
 
+const (
+	statusOK    = "ok"
+	statusError = "error"
+)
+
 func (c *Crawler) process(ctx context.Context, t task) taskResult {
 	switch t.kind {
 	case pageTask:
@@ -47,6 +52,8 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 	response, err := c.fetcher.Fetch(ctx, url)
 	if err != nil {
 		result.err = err
+		result.status = statusError
+
 		slog.DebugContext(
 			ctx,
 			"Failed to fetch url",
@@ -58,7 +65,11 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 	}
 
 	result.httpStatus = response.StatusCode
-	result.status = response.Status
+	result.status = statusOK
+
+	if response.StatusCode >= http.StatusBadRequest {
+		result.status = statusError
+	}
 
 	html, err := htmlparser.Parse(response.Body, url)
 	defer func() {
@@ -67,6 +78,7 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 
 	if err != nil {
 		result.err = err
+		result.status = statusError
 
 		return result
 	}

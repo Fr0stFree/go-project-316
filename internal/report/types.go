@@ -18,6 +18,7 @@ type Page struct {
 	Depth        int        `json:"depth"`
 	HTTPStatus   int        `json:"http_status"`
 	Status       string     `json:"status"`
+	Error        string     `json:"error,omitempty"`
 	SEO          SEO        `json:"seo"`
 	BrokenLinks  []NodeLink `json:"broken_links"`
 	Assets       []Asset    `json:"assets"`
@@ -30,7 +31,7 @@ type Asset struct {
 	Type       string `json:"type"`
 	StatusCode int    `json:"status_code"`
 	SizeBytes  int    `json:"size_bytes"`
-	Error      string `json:"error"`
+	Error      string `json:"error,omitempty"`
 }
 
 // NodeLink represents a broken link found on a crawled page.
