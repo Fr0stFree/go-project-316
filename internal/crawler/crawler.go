@@ -28,8 +28,12 @@ type Option func(*Crawler) error
 // WithPoolSize sets the number of concurrent workers.
 func WithPoolSize(size int) Option {
 	return func(c *Crawler) error {
-		if size <= 0 {
-			return errors.New("size cannot be non-positive")
+		if size == 0 {
+			return nil
+		}
+
+		if size < 0 {
+			return errors.New("size cannot be negative")
 		}
 
 		c.poolSize = size
@@ -41,8 +45,12 @@ func WithPoolSize(size int) Option {
 // WithMaxDepth sets the maximum crawling depth.
 func WithMaxDepth(depth int) Option {
 	return func(c *Crawler) error {
+		if depth == 0 {
+			return nil
+		}
+
 		if depth < 0 {
-			return errors.New("max depth cannot negative")
+			return errors.New("max depth cannot be negative")
 		}
 
 		c.maxDepth = depth
@@ -54,6 +62,10 @@ func WithMaxDepth(depth int) Option {
 // WithUserAgent sets the User-Agent header used for HTTP requests.
 func WithUserAgent(userAgent string) Option {
 	return func(c *Crawler) error {
+		if userAgent == "" {
+			return nil
+		}
+
 		err := c.fetcher.SetUserAgent(userAgent)
 		if err != nil {
 			return err
@@ -64,16 +76,13 @@ func WithUserAgent(userAgent string) Option {
 }
 
 // WithTimeout sets the timeout for every HTTP request.
-func WithTimeout(timeout string) Option {
+func WithTimeout(timeout time.Duration) Option {
 	return func(c *Crawler) error {
-		duration, err := time.ParseDuration(timeout)
-		if err != nil {
-			return err
+		if timeout == 0 {
+			return nil
 		}
 
-		err = c.fetcher.SetTimeout(duration)
-
-		return err
+		return c.fetcher.SetTimeout(timeout)
 	}
 }
 
@@ -96,18 +105,13 @@ func WithRPS(ctx context.Context, rps int) Option {
 }
 
 // WithDelay configures the crawler to enforce a minimum delay between HTTP requests
-func WithDelay(delay string) Option {
+func WithDelay(delay time.Duration) Option {
 	return func(c *Crawler) error {
-		duration, err := time.ParseDuration(delay)
-		if err != nil {
-			return err
-		}
-
-		if duration == time.Duration(0) {
+		if delay == 0 {
 			return nil
 		}
 
-		limiter, err := ratelimiter.NewDelayRateLimiter(duration)
+		limiter, err := ratelimiter.NewDelayRateLimiter(delay)
 		if err != nil {
 			return err
 		}
@@ -121,6 +125,10 @@ func WithDelay(delay string) Option {
 // WithMaxAttempts sets the retry configuration for HTTP requests.
 func WithMaxAttempts(maxAttempts int) Option {
 	return func(c *Crawler) error {
+		if maxAttempts == 0 {
+			return nil
+		}
+
 		err := c.fetcher.SetMaxAttempts(maxAttempts)
 		if err != nil {
 			return err

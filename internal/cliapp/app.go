@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/urfave/cli/v3"
 
 	"code/crawler"
+	"code/internal/common/fmttools"
 )
 
 var cliArgs = []cli.Argument{
@@ -40,15 +42,15 @@ var cliFlags = []cli.Flag{
 		Value: 1,
 		Usage: "number of retries for failed requests",
 	},
-	&cli.StringFlag{
+	&cli.DurationFlag{
 		Name:  "delay",
 		Usage: "delay between requests (example: 200ms, 1s)",
-		Value: "0s",
+		Value: 0,
 	},
-	&cli.StringFlag{
+	&cli.DurationFlag{
 		Name:  "timeout",
 		Usage: "per-request timeout",
-		Value: "15s",
+		Value: 15 * time.Second,
 	},
 	&cli.IntFlag{
 		Name:  "rps",
@@ -78,8 +80,8 @@ func cliAction(ctx context.Context, cmd *cli.Command) error {
 		URL:         url,
 		Depth:       cmd.Int("depth"),
 		Retries:     cmd.Int("retries"),
-		Delay:       cmd.String("delay"),
-		Timeout:     cmd.String("timeout"),
+		Delay:       cmd.Duration("delay"),
+		Timeout:     cmd.Duration("timeout"),
 		UserAgent:   cmd.String("user-agent"),
 		Concurrency: cmd.Int("workers"),
 		IndentJSON:  true,
@@ -91,7 +93,12 @@ func cliAction(ctx context.Context, cmd *cli.Command) error {
 		return cli.Exit(fmt.Sprintf("something went wrong during analysis of `%s`: %v", url, err), 1)
 	}
 
-	fmt.Println(string(report))
+	data, err := fmttools.ToJSON(report, opts.IndentJSON)
+	if err != nil {
+		return cli.Exit(fmt.Sprintf("could not format report: %v", err), 1)
+	}
+
+	fmt.Println(string(data))
 
 	return nil
 }

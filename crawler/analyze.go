@@ -5,8 +5,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
-	"code/internal/common/fmttools"
 	"code/internal/common/logger"
 	"code/internal/crawler"
 	"code/internal/report"
@@ -17,9 +17,9 @@ type Options struct {
 	URL         string
 	Depth       int
 	Retries     int
-	Delay       string
+	Delay       time.Duration
 	RPS         int
-	Timeout     string
+	Timeout     time.Duration
 	UserAgent   string
 	Concurrency int
 	IndentJSON  bool
@@ -27,8 +27,11 @@ type Options struct {
 	HTTPClient  *http.Client
 }
 
-// Analyze crawls the configured URL and returns the resulting report as JSON.
-func Analyze(ctx context.Context, opts Options) ([]byte, error) {
+// Report contains the pages and metadata collected during an analysis.
+type Report = report.Report
+
+// Analyze crawls the configured URL and returns the resulting report.
+func Analyze(ctx context.Context, opts Options) (*Report, error) {
 	logger.Configure(opts.Verbose)
 
 	crawl, err := crawler.New(
@@ -52,10 +55,5 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 
 	report := report.Build(opts.URL, opts.Depth, crawlResults)
 
-	data, err := fmttools.ToJSON(report, opts.IndentJSON)
-	if err != nil {
-		return nil, err
-	}
-
-	return data, nil
+	return report, nil
 }
