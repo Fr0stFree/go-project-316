@@ -164,11 +164,11 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]Result, e
 
 	for state.hasWork() {
 		if err := c.runIteration(ctx, root, state); err != nil {
-			return state.mergedResults(), err
+			return c.mergeResults(state.pages, state.assets), err
 		}
 	}
 
-	return state.mergedResults(), nil
+	return c.mergeResults(state.pages, state.assets), nil
 }
 
 func (c *Crawler) runIteration(ctx context.Context, root *url.URL, state *crawlerState) error {
@@ -203,6 +203,7 @@ func (c *Crawler) runIteration(ctx context.Context, root *url.URL, state *crawle
 
 		case result.asset != nil:
 			c.handleAssetResult(state, *result.asset)
+
 		default:
 			return errors.New("worker returned an empty result")
 		}
@@ -214,6 +215,7 @@ func (c *Crawler) runIteration(ctx context.Context, root *url.URL, state *crawle
 func (c *Crawler) handleAssetResult(state *crawlerState, result assetTaskResult) {
 	state.assets[result.url.String()] = result
 }
+
 func (c *Crawler) handlePageResult(root *url.URL, state *crawlerState, result pageTaskResult) {
 	state.pages[result.url.String()] = result
 
@@ -244,4 +246,52 @@ func (c *Crawler) handlePageResult(root *url.URL, state *crawlerState, result pa
 
 		state.pending.PushBack(task{url: link, depth: result.depth + 1, kind: pageTask})
 	}
+}
+
+func (c *Crawler) mergeResults(
+	pages map[string]pageTaskResult,
+	assets map[string]assetTaskResult,
+) map[string]Result {
+	results := make(map[string]Result, len(pages))
+
+	for key, page := range pages {
+		result := Result{
+			URL:          page.url,
+			Depth:        page.depth,
+			HTTPStatus:   page.httpStatus,
+			Status:       page.status,
+			DiscoveredAt: page.discoveredAt,
+			HTML:         page.html,
+			Assets:       make([]AssetResult, 0),
+			Err:          page.err,
+		}
+
+		if page.html != nil {
+			for _, asset := range page.html.Assets {
+				assetURL := asset.URL.String()
+
+				item := AssetResult{
+					URL:  assetURL,
+					Type: asset.Type,
+				}
+
+				if fetched, ok := assets[assetURL]; ok {
+					item.StatusCode = fetched.httpStatus
+					item.SizeBytes = fetched.sizeBytes
+
+					if fetched.err != nil {
+						item.Error = fetched.err
+					}
+				} else {
+					item.Error = errors.New("asset was not fetched")
+				}
+
+				result.Assets = append(result.Assets, item)
+			}
+		}
+
+		results[key] = result
+	}
+
+	return results
 }

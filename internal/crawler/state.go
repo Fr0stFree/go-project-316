@@ -2,7 +2,6 @@ package crawler
 
 import (
 	"container/list"
-	"errors"
 	"net/url"
 )
 
@@ -52,49 +51,4 @@ func (s *crawlerState) markAssetSeen(url *url.URL) bool {
 	s.seenAssets[key] = struct{}{}
 
 	return true
-}
-
-func (s *crawlerState) mergedResults() map[string]Result {
-	results := make(map[string]Result, len(s.pages))
-
-	for key, page := range s.pages {
-		result := Result{
-			URL:          page.url,
-			Depth:        page.depth,
-			HTTPStatus:   page.httpStatus,
-			Status:       page.status,
-			DiscoveredAt: page.discoveredAt,
-			HTML:         page.html,
-			Assets:       make([]AssetResult, 0),
-			Err:          page.err,
-		}
-
-		if page.html != nil {
-			for _, asset := range page.html.Assets {
-				assetURL := asset.URL.String()
-
-				item := AssetResult{
-					URL:  assetURL,
-					Type: asset.Type,
-				}
-
-				if fetched, ok := s.assets[assetURL]; ok {
-					item.StatusCode = fetched.httpStatus
-					item.SizeBytes = fetched.sizeBytes
-
-					if fetched.err != nil {
-						item.Error = fetched.err
-					}
-				} else {
-					item.Error = errors.New("asset was not fetched")
-				}
-
-				result.Assets = append(result.Assets, item)
-			}
-		}
-
-		results[key] = result
-	}
-
-	return results
 }
