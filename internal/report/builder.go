@@ -2,14 +2,15 @@
 package report
 
 import (
-	"code/internal/common/timeutils"
-	"code/internal/crawler"
-	"code/internal/crawler/htmlparser"
 	"net/url"
 	"slices"
 	"strings"
 
 	"github.com/samber/lo"
+
+	"code/internal/common/timeutils"
+	"code/internal/crawler"
+	"code/internal/crawler/htmlparser"
 )
 
 // Build creates a crawl report from the collected task results.

@@ -2,7 +2,6 @@
 package httpfetcher
 
 import (
-	"code/internal/common/httptools"
 	"context"
 	"errors"
 	"log/slog"
@@ -10,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"code/internal/common/httptools"
 )
 
 // Fetcher performs HTTP requests with configurable retries, User-Agent headers, and rate limiting.

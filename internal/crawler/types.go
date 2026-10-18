@@ -1,9 +1,10 @@
 package crawler
 
 import (
-	"code/internal/crawler/htmlparser"
 	"net/url"
 	"time"
+
+	"code/internal/crawler/htmlparser"
 )
 
 type taskKind uint8

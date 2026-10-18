@@ -1,8 +1,6 @@
 package crawler
 
 import (
-	"code/internal/common/timeutils"
-	"code/internal/crawler/htmlparser"
 	"context"
 	"errors"
 	"fmt"
@@ -10,6 +8,9 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+
+	"code/internal/common/timeutils"
+	"code/internal/crawler/htmlparser"
 )
 
 func (c *Crawler) process(ctx context.Context, t task) taskResult {

@@ -2,15 +2,16 @@
 package crawler
 
 import (
-	"code/internal/common/httptools"
-	"code/internal/crawler/httpfetcher"
-	"code/internal/crawler/ratelimiter"
-	"code/internal/crawler/workerpool"
 	"context"
 	"errors"
 	"net/http"
 	"net/url"
 	"time"
+
+	"code/internal/common/httptools"
+	"code/internal/crawler/httpfetcher"
+	"code/internal/crawler/ratelimiter"
+	"code/internal/crawler/workerpool"
 )
 
 // Crawler manages concurrent web crawling and tracks discovered URLs and results.
