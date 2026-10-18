@@ -224,7 +224,7 @@ func (c *Crawler) handleAssetResult(state *crawlerState, result assetTaskResult)
 func (c *Crawler) handlePageResult(root *url.URL, state *crawlerState, result pageTaskResult) {
 	state.pages[result.url.String()] = result
 
-	if result.html == nil || result.depth >= c.maxDepth {
+	if result.html == nil || result.depth >= max(1, c.maxDepth) {
 		return
 	}
 
