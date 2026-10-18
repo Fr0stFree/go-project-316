@@ -37,7 +37,7 @@ test:
 	@go test ./... -v
 
 test-coverage:
-	@go test ./... -coverprofile=$(COVERAGE_PROFILE)
+	@go test ./... -coverpkg=./... -coverprofile=$(COVERAGE_PROFILE)
 	@go tool cover -func=$(COVERAGE_PROFILE)
 
 install-lint:

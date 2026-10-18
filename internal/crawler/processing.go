@@ -47,7 +47,7 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 	result := pageTaskResult{
 		url:          url,
 		depth:        depth,
-		discoveredAt: timeutils.UTCNowPretty(),
+		discoveredAt: timeutils.UTCNowPretty(c.now),
 	}
 	method := lo.Ternary(depth >= max(1, c.maxDepth), http.MethodHead, http.MethodGet)
 

@@ -5,20 +5,20 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/samber/lo"
 
-	"code/internal/common/timeutils"
 	"code/internal/crawler"
 	"code/internal/crawler/htmlparser"
 )
 
 // Build creates a crawl report from the collected task results.
-func Build(rootURL string, maxDepth int, results map[string]crawler.Result) *Report {
+func Build(rootURL string, maxDepth int, results map[string]crawler.Result, generatedAt time.Time) *Report {
 	report := &Report{
 		RootURL:     rootURL,
 		Depth:       maxDepth,
-		GeneratedAt: timeutils.UTCNowPretty(),
+		GeneratedAt: generatedAt,
 		Pages:       make([]Page, 0, len(results)),
 	}
 

@@ -18,6 +18,7 @@ import (
 type Crawler struct {
 	fetcher  *httpfetcher.Fetcher
 	pool     *workerpool.WorkerPool[task, taskResult]
+	now      func() time.Time
 	poolSize int
 	maxDepth int
 }
@@ -30,6 +31,19 @@ const (
 
 // Option configures a Crawler and returns an error if the configuration is invalid.
 type Option func(*Crawler) error
+
+// WithClock sets the time source used for page discovery timestamps.
+func WithClock(now func() time.Time) Option {
+	return func(c *Crawler) error {
+		if now != nil {
+			c.now = now
+		} else {
+			c.now = time.Now
+		}
+
+		return nil
+	}
+}
 
 // WithPoolSize sets the number of concurrent workers.
 func WithPoolSize(size int) Option {
@@ -146,6 +160,7 @@ func New(client *http.Client, opts ...Option) (*Crawler, error) {
 		maxDepth: defaultMaxDepth,
 		fetcher:  httpfetcher.New(client),
 		pool:     workerpool.New[task, taskResult](defaultBufferSize),
+		now:      time.Now,
 		poolSize: defaultPoolSize,
 	}
 	for _, opt := range opts {

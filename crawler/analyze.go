@@ -9,8 +9,11 @@ import (
 
 	"code/internal/common/fmttools"
 	"code/internal/common/logger"
+	"code/internal/common/timeutils"
 	"code/internal/crawler"
 	"code/internal/report"
+
+	"github.com/samber/lo"
 )
 
 // Options defines the configuration for the web crawling operation.
@@ -26,6 +29,7 @@ type Options struct {
 	IndentJSON  bool
 	Verbose     bool
 	HTTPClient  *http.Client
+	Now         func() time.Time
 }
 
 // Report contains the pages and metadata collected during an analysis.
@@ -34,9 +38,11 @@ type Report = report.Report
 // Analyze crawls the configured URL and returns the resulting report.
 func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	logger.Configure(opts.Verbose)
+	now := lo.Ternary(opts.Now != nil, opts.Now, time.Now)
 
 	crawl, err := crawler.New(
 		opts.HTTPClient,
+		crawler.WithClock(now),
 		crawler.WithUserAgent(opts.UserAgent),
 		crawler.WithMaxAttempts(opts.Retries),
 		crawler.WithMaxDepth(opts.Depth),
@@ -54,7 +60,7 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 		return nil, err
 	}
 
-	report := report.Build(opts.URL, opts.Depth, crawlResults)
+	report := report.Build(opts.URL, opts.Depth, crawlResults, timeutils.UTCNowPretty(now))
 
 	return fmttools.ToJSON(report, opts.IndentJSON)
 }
