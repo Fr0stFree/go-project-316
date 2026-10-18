@@ -23,6 +23,10 @@ func Build(rootURL string, maxDepth int, results map[string]crawler.Result) *Rep
 	}
 
 	for _, result := range results {
+		if result.Depth >= maxDepth {
+			continue
+		}
+
 		page := Page{
 			URL:          result.URL.String(),
 			Depth:        result.Depth,

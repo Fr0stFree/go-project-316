@@ -224,7 +224,7 @@ func (c *Crawler) handleAssetResult(state *crawlerState, result assetTaskResult)
 func (c *Crawler) handlePageResult(root *url.URL, state *crawlerState, result pageTaskResult) {
 	state.pages[result.url.String()] = result
 
-	if result.html == nil {
+	if result.html == nil || result.depth >= c.maxDepth {
 		return
 	}
 
@@ -234,10 +234,6 @@ func (c *Crawler) handlePageResult(root *url.URL, state *crawlerState, result pa
 		}
 
 		state.pending.PushBack(task{url: asset.URL, kind: assetTask})
-	}
-
-	if result.depth+1 >= c.maxDepth {
-		return
 	}
 
 	for _, link := range result.html.Links {
