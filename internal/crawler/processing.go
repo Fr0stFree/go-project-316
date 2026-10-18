@@ -2,7 +2,6 @@ package crawler
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -11,6 +10,8 @@ import (
 
 	"code/internal/common/timeutils"
 	"code/internal/crawler/htmlparser"
+
+	"github.com/samber/lo"
 )
 
 const (
@@ -48,8 +49,9 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 		depth:        depth,
 		discoveredAt: timeutils.UTCNowPretty(),
 	}
+	method := lo.Ternary(depth >= max(1, c.maxDepth), http.MethodHead, http.MethodGet)
 
-	response, err := c.fetcher.Fetch(ctx, url)
+	response, err := c.fetcher.Fetch(ctx, url, method)
 	if err != nil {
 		result.err = err
 		result.status = statusError
@@ -63,6 +65,7 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 
 		return result
 	}
+	defer func() { _ = response.Body.Close() }()
 
 	result.httpStatus = response.StatusCode
 	result.status = statusOK
@@ -71,11 +74,11 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 		result.status = statusError
 	}
 
-	html, err := htmlparser.Parse(response.Body, url)
-	defer func() {
-		_ = response.Body.Close()
-	}()
+	if method == http.MethodHead {
+		return result
+	}
 
+	html, err := htmlparser.Parse(response.Body, url)
 	if err != nil {
 		result.err = err
 		result.status = statusError
@@ -88,55 +91,68 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 	return result
 }
 
-func (c *Crawler) processAsset(ctx context.Context, assetURL *url.URL) assetTaskResult {
-	slog.DebugContext(
-		ctx,
-		"Processing asset task...",
+func (c *Crawler) processAsset(
+	ctx context.Context,
+	assetURL *url.URL,
+) assetTaskResult {
+	return c.processAssetWithMethod(ctx, assetURL, http.MethodHead)
+}
+
+func (c *Crawler) processAssetWithMethod(
+	ctx context.Context,
+	assetURL *url.URL,
+	method string,
+) assetTaskResult {
+	slog.DebugContext(ctx,
+		"Processing asset",
 		"url", assetURL.String(),
+		"method", method,
 	)
 
-	result := assetTaskResult{
-		url: assetURL,
-	}
+	result := assetTaskResult{url: assetURL}
 
-	response, err := c.fetcher.Fetch(ctx, assetURL)
+	response, err := c.fetcher.Fetch(ctx, assetURL, method)
 	if err != nil {
-		slog.DebugContext(
-			ctx,
-			"Failed to fetch asset",
-			"url", assetURL.String(),
-			"err", err,
-		)
-
 		result.err = err
 
 		return result
 	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
 
 	result.httpStatus = response.StatusCode
 
-	if response.StatusCode >= http.StatusBadRequest {
-		result.err = fmt.Errorf("unexpected HTTP status: %d", response.StatusCode)
-	}
+	if method == http.MethodHead {
+		headUnsupported := response.StatusCode == http.StatusMethodNotAllowed || response.StatusCode == http.StatusNotImplemented
+		sizeUnknown := response.StatusCode < http.StatusBadRequest && response.ContentLength < 0
 
-	var size int64
-	if response.ContentLength >= 0 {
-		size = response.ContentLength
-	} else {
-		size, err = io.Copy(io.Discard, response.Body)
-		if err != nil {
-			result.err = err
+		if headUnsupported || sizeUnknown {
+			_ = response.Body.Close()
+
+			return c.processAssetWithMethod(ctx, assetURL, http.MethodGet)
 		}
 	}
 
-	result.sizeBytes = int(size)
+	defer func() { _ = response.Body.Close() }()
 
-	if err != nil {
-		result.err = errors.Join(result.err, err)
+	if response.StatusCode >= http.StatusBadRequest {
+		result.err = fmt.Errorf("unexpected HTTP status: %d", response.StatusCode)
+
+		return result
 	}
+
+	if method == http.MethodHead {
+		result.sizeBytes = int(response.ContentLength)
+
+		return result
+	}
+
+	size, err := io.Copy(io.Discard, response.Body)
+	if err != nil {
+		result.err = fmt.Errorf("failed to measure asset size: %w", err)
+
+		return result
+	}
+
+	result.sizeBytes = int(size)
 
 	return result
 }
