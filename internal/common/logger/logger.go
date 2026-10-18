@@ -6,12 +6,17 @@ import (
 	"os"
 )
 
-// Configure initializes the default logger with a text handler.
-func Configure() {
+// Configure initializes the default logger with optional debug logging.
+func Configure(verbose bool) {
+	level := slog.LevelInfo
+	if verbose {
+		level = slog.LevelDebug
+	}
+
 	handler := slog.NewTextHandler(
-		os.Stdout,
+		os.Stderr,
 		&slog.HandlerOptions{
-			Level: slog.LevelDebug,
+			Level: level,
 		},
 	)
 

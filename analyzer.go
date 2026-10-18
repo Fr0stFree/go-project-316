@@ -23,12 +23,13 @@ type Options struct {
 	UserAgent   string
 	Concurrency int
 	IndentJSON  bool
+	Verbose     bool
 	HTTPClient  *http.Client
 }
 
 // Analyze crawls the configured URL and returns the resulting report as JSON.
 func Analyze(ctx context.Context, opts Options) ([]byte, error) {
-	logger.Configure()
+	logger.Configure(opts.Verbose)
 
 	crawl, err := crawler.New(
 		opts.HTTPClient,
@@ -36,6 +37,7 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 		crawler.WithMaxAttempts(opts.Retries),
 		crawler.WithMaxDepth(opts.Depth),
 		crawler.WithPoolSize(opts.Concurrency),
+		crawler.WithTimeout(opts.Timeout),
 		crawler.WithDelay(opts.Delay),
 		crawler.WithRPS(ctx, opts.RPS),
 	)

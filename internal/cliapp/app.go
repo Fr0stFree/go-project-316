@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/urfave/cli/v3"
 )
@@ -65,6 +64,10 @@ var cliFlags = []cli.Flag{
 		Value: 4,
 		Usage: "number of concurrent workers",
 	},
+	&cli.BoolFlag{
+		Name:  "verbose",
+		Usage: "enable debug logging",
+	},
 }
 
 func cliAction(ctx context.Context, cmd *cli.Command) error {
@@ -79,6 +82,7 @@ func cliAction(ctx context.Context, cmd *cli.Command) error {
 		UserAgent:   cmd.String("user-agent"),
 		Concurrency: cmd.Int("workers"),
 		IndentJSON:  true,
+		Verbose:     cmd.Bool("verbose"),
 	}
 
 	report, err := code.Analyze(ctx, opts)
@@ -87,10 +91,6 @@ func cliAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	fmt.Println(string(report))
-
-	if errors.Is(err, context.Canceled) {
-		fmt.Fprintln(os.Stderr, "Crawling interrupted. Partial report generated.")
-	}
 
 	return nil
 }
