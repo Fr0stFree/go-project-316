@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"code/internal/common/fmttools"
 	"code/internal/common/logger"
 	"code/internal/crawler"
 	"code/internal/report"
@@ -31,7 +32,7 @@ type Options struct {
 type Report = report.Report
 
 // Analyze crawls the configured URL and returns the resulting report.
-func Analyze(ctx context.Context, opts Options) (*Report, error) {
+func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	logger.Configure(opts.Verbose)
 
 	crawl, err := crawler.New(
@@ -55,5 +56,5 @@ func Analyze(ctx context.Context, opts Options) (*Report, error) {
 
 	report := report.Build(opts.URL, opts.Depth, crawlResults)
 
-	return report, nil
+	return fmttools.ToJSON(report, opts.IndentJSON)
 }

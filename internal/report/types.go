@@ -6,7 +6,7 @@ import (
 
 // Report represents the result of a web crawling operation.
 type Report struct {
-	URL         string    `json:"root_url"`
+	RootURL     string    `json:"root_url"`
 	Depth       int       `json:"depth"`
 	GeneratedAt time.Time `json:"generated_at"`
 	Pages       []Page    `json:"pages"`

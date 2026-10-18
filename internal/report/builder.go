@@ -16,7 +16,7 @@ import (
 // Build creates a crawl report from the collected task results.
 func Build(rootURL string, maxDepth int, results map[string]crawler.Result) *Report {
 	report := &Report{
-		URL:         rootURL,
+		RootURL:     rootURL,
 		Depth:       maxDepth,
 		GeneratedAt: timeutils.UTCNowPretty(),
 		Pages:       make([]Page, 0, len(results)),

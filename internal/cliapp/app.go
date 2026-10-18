@@ -10,7 +10,6 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"code/crawler"
-	"code/internal/common/fmttools"
 )
 
 var cliArgs = []cli.Argument{
@@ -88,14 +87,9 @@ func cliAction(ctx context.Context, cmd *cli.Command) error {
 		Verbose:     cmd.Bool("verbose"),
 	}
 
-	report, err := crawler.Analyze(ctx, opts)
+	data, err := crawler.Analyze(ctx, opts)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		return cli.Exit(fmt.Sprintf("something went wrong during analysis of `%s`: %v", url, err), 1)
-	}
-
-	data, err := fmttools.ToJSON(report, opts.IndentJSON)
-	if err != nil {
-		return cli.Exit(fmt.Sprintf("could not format report: %v", err), 1)
 	}
 
 	fmt.Println(string(data))
