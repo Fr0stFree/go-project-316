@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"code/internal/common/httptools"
 	"code/internal/common/timeutils"
 	"code/internal/crawler/htmlparser"
 
@@ -49,9 +50,16 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 		depth:        depth,
 		discoveredAt: timeutils.UTCNowPretty(c.now),
 	}
-	method := lo.Ternary(depth >= max(1, c.maxDepth), http.MethodHead, http.MethodGet)
+
+	shouldCheckOnly := depth >= max(1, c.maxDepth)
+	method := lo.Ternary(shouldCheckOnly, http.MethodHead, http.MethodGet)
 
 	response, err := c.fetcher.Fetch(ctx, url, method)
+	if err == nil && shouldCheckOnly && !httptools.IsMethodSupported(response.StatusCode) {
+		_ = response.Body.Close()
+		response, err = c.fetcher.Fetch(ctx, url, http.MethodGet)
+	}
+
 	if err != nil {
 		result.err = err
 		result.status = statusError
@@ -65,6 +73,7 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 
 		return result
 	}
+
 	defer func() { _ = response.Body.Close() }()
 
 	result.httpStatus = response.StatusCode
@@ -74,7 +83,7 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 		result.status = statusError
 	}
 
-	if method == http.MethodHead {
+	if shouldCheckOnly {
 		return result
 	}
 
@@ -121,10 +130,9 @@ func (c *Crawler) processAssetWithMethod(
 	result.httpStatus = response.StatusCode
 
 	if method == http.MethodHead {
-		headUnsupported := response.StatusCode == http.StatusMethodNotAllowed || response.StatusCode == http.StatusNotImplemented
 		sizeUnknown := response.StatusCode < http.StatusBadRequest && response.ContentLength < 0
 
-		if headUnsupported || sizeUnknown {
+		if !httptools.IsMethodSupported(response.StatusCode) || sizeUnknown {
 			_ = response.Body.Close()
 
 			return c.processAssetWithMethod(ctx, assetURL, http.MethodGet)
