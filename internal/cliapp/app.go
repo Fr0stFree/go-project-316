@@ -10,6 +10,7 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"code/crawler"
+	"code/internal/common/logger"
 )
 
 var cliArgs = []cli.Argument{
@@ -85,8 +86,9 @@ func cliAction(ctx context.Context, cmd *cli.Command) error {
 		UserAgent:   cmd.String("user-agent"),
 		Concurrency: cmd.Int("workers"),
 		IndentJSON:  true,
-		Verbose:     cmd.Bool("verbose"),
 	}
+
+	logger.Configure(cmd.Bool("verbose"))
 
 	data, err := crawler.Analyze(ctx, opts)
 	if err != nil && !errors.Is(err, context.Canceled) {
