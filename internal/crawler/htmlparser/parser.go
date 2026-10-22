@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"code/internal/common/httptools"
+	"code/internal/common/stringtools"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/samber/lo"
@@ -83,29 +84,34 @@ func findLinks(doc *goquery.Document, pageURL *url.URL) []*url.URL {
 
 func findHeader(doc *goquery.Document) *string {
 	h1 := doc.Find("h1").First()
-	if h1.Length() > 0 {
-		return lo.ToPtr(h1.Text())
+	if h1.Length() == 0 {
+		return nil
 	}
 
-	return nil
+	return lo.ToPtr(stringtools.CleanText(h1.Text()))
 }
 
 func findDescription(doc *goquery.Document) *string {
-	description := doc.Find(`meta[name="description"]`).First()
-	if description.Length() > 0 {
-		return lo.ToPtr(description.AttrOr("content", ""))
+	description := doc.Find("meta[name]").FilterFunction(
+		func(_ int, s *goquery.Selection) bool {
+			return strings.EqualFold(s.AttrOr("name", ""), "description")
+		},
+	).First()
+
+	if description.Length() == 0 {
+		return nil
 	}
 
-	return nil
+	return lo.ToPtr(stringtools.CleanText(description.AttrOr("content", "")))
 }
 
 func findTitle(doc *goquery.Document) *string {
 	title := doc.Find("title").First()
-	if title.Length() > 0 {
-		return lo.ToPtr(title.Text())
+	if title.Length() == 0 {
+		return nil
 	}
 
-	return nil
+	return lo.ToPtr(stringtools.CleanText(title.Text()))
 }
 
 func findImages(doc *goquery.Document, pageURL *url.URL) []Asset {
