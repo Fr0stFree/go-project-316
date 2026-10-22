@@ -9,18 +9,20 @@ type crawlerState struct {
 	pending list.List
 	running int
 
-	seenPages  map[string]struct{}
+	seenURLs   map[string]struct{}
 	seenAssets map[string]struct{}
 
 	pages  map[string]pageTaskResult
+	links  map[string]linkTaskResult
 	assets map[string]assetTaskResult
 }
 
 func newCrawlerState() *crawlerState {
 	return &crawlerState{
-		seenPages:  make(map[string]struct{}),
+		seenURLs:   make(map[string]struct{}),
 		seenAssets: make(map[string]struct{}),
 		pages:      make(map[string]pageTaskResult),
+		links:      make(map[string]linkTaskResult),
 		assets:     make(map[string]assetTaskResult),
 	}
 }
@@ -29,7 +31,7 @@ func (s *crawlerState) hasWork() bool {
 	return s.pending.Len() > 0 || s.running > 0
 }
 
-func (s *crawlerState) markPageSeen(url *url.URL) bool {
+func (s *crawlerState) markURLSeen(url *url.URL) bool {
 	clonedURL := *url
 	if clonedURL.Path == "" {
 		clonedURL.Path = "/"
@@ -37,11 +39,11 @@ func (s *crawlerState) markPageSeen(url *url.URL) bool {
 
 	key := clonedURL.String()
 
-	if _, exists := s.seenPages[key]; exists {
+	if _, exists := s.seenURLs[key]; exists {
 		return false
 	}
 
-	s.seenPages[key] = struct{}{}
+	s.seenURLs[key] = struct{}{}
 
 	return true
 }

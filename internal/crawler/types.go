@@ -11,6 +11,7 @@ type taskKind uint8
 
 const (
 	pageTask taskKind = iota
+	linkCheckTask
 	assetTask
 )
 
@@ -22,6 +23,7 @@ type task struct {
 
 type taskResult struct {
 	page  *pageTaskResult
+	link  *linkTaskResult
 	asset *assetTaskResult
 }
 
@@ -33,6 +35,13 @@ type pageTaskResult struct {
 	discoveredAt time.Time
 	html         *htmlparser.ParsedHTML
 	err          error
+}
+
+type linkTaskResult struct {
+	url        *url.URL
+	depth      int
+	httpStatus int
+	err        error
 }
 
 type assetTaskResult struct {
@@ -55,6 +64,7 @@ type AssetResult struct {
 type Result struct {
 	URL          *url.URL
 	Depth        int
+	CheckedOnly  bool
 	HTTPStatus   int
 	Status       string
 	DiscoveredAt time.Time

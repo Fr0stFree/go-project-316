@@ -23,7 +23,7 @@ func Build(rootURL string, maxDepth int, results map[string]crawler.Result, gene
 	}
 
 	for _, result := range results {
-		if result.Depth >= max(1, maxDepth) {
+		if result.CheckedOnly || result.Depth >= max(1, maxDepth) {
 			continue
 		}
 

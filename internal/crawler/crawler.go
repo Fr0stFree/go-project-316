@@ -12,6 +12,8 @@ import (
 	"code/internal/crawler/httpfetcher"
 	"code/internal/crawler/ratelimiter"
 	"code/internal/crawler/workerpool"
+
+	"github.com/samber/lo"
 )
 
 // Crawler manages concurrent web crawling and tracks discovered URLs and results.
@@ -171,7 +173,7 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]Result, e
 	}
 
 	state := newCrawlerState()
-	state.markPageSeen(root)
+	state.markURLSeen(root)
 
 	firstTask := task{url: root, kind: pageTask}
 	state.pending.PushBack(firstTask)
@@ -181,11 +183,11 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]Result, e
 
 	for state.hasWork() {
 		if err := c.runIteration(ctx, root, state); err != nil {
-			return c.mergeResults(state.pages, state.assets), err
+			return c.mergeResults(state), err
 		}
 	}
 
-	return c.mergeResults(state.pages, state.assets), nil
+	return c.mergeResults(state), nil
 }
 
 func (c *Crawler) runIteration(ctx context.Context, root *url.URL, state *crawlerState) error {
@@ -218,6 +220,9 @@ func (c *Crawler) runIteration(ctx context.Context, root *url.URL, state *crawle
 		case result.page != nil:
 			c.handlePageResult(root, state, *result.page)
 
+		case result.link != nil:
+			state.links[result.link.url.String()] = *result.link
+
 		case result.asset != nil:
 			c.handleAssetResult(state, *result.asset)
 
@@ -249,25 +254,25 @@ func (c *Crawler) handlePageResult(root *url.URL, state *crawlerState, result pa
 	}
 
 	for _, link := range result.html.Links {
-		if !httptools.IsSameDomain(root, link) {
+		if !state.markURLSeen(link) {
 			continue
 		}
 
-		if !state.markPageSeen(link) {
-			continue
+		kind := pageTask
+
+		depth := result.depth + 1
+		if depth >= max(1, c.maxDepth) || !httptools.IsSameDomain(root, link) {
+			kind = linkCheckTask
 		}
 
-		state.pending.PushBack(task{url: link, depth: result.depth + 1, kind: pageTask})
+		state.pending.PushBack(task{url: link, depth: depth, kind: kind})
 	}
 }
 
-func (c *Crawler) mergeResults(
-	pages map[string]pageTaskResult,
-	assets map[string]assetTaskResult,
-) map[string]Result {
-	results := make(map[string]Result, len(pages))
+func (c *Crawler) mergeResults(state *crawlerState) map[string]Result {
+	results := make(map[string]Result, len(state.pages)+len(state.links))
 
-	for key, page := range pages {
+	for key, page := range state.pages {
 		result := Result{
 			URL:          page.url,
 			Depth:        page.depth,
@@ -288,7 +293,7 @@ func (c *Crawler) mergeResults(
 					Type: asset.Type,
 				}
 
-				if fetched, ok := assets[assetURL]; ok {
+				if fetched, ok := state.assets[assetURL]; ok {
 					item.StatusCode = fetched.httpStatus
 					item.SizeBytes = fetched.sizeBytes
 
@@ -304,6 +309,23 @@ func (c *Crawler) mergeResults(
 		}
 
 		results[key] = result
+	}
+
+	for key, link := range state.links {
+		status := lo.Ternary(
+			link.err != nil || link.httpStatus >= http.StatusBadRequest,
+			statusError,
+			statusOK,
+		)
+
+		results[key] = Result{
+			URL:         link.url,
+			Depth:       link.depth,
+			CheckedOnly: true,
+			HTTPStatus:  link.httpStatus,
+			Status:      status,
+			Err:         link.err,
+		}
 	}
 
 	return results
