@@ -33,12 +33,14 @@ func Build(rootURL string, maxDepth int, results map[string]crawler.Result, gene
 			HTTPStatus:   result.HTTPStatus,
 			Status:       result.Status,
 			Error:        errToStr(result.Err),
+			BrokenLinks:  make([]NodeLink, 0),
+			Assets:       make([]Asset, 0),
 			DiscoveredAt: result.DiscoveredAt,
 			SEO:          buildSEO(result.HTML),
 		}
 		if result.Err == nil {
-			page.BrokenLinks = buildBrokenLinks(result, results)
-			page.Assets = buildAssets(result.Assets)
+			page.BrokenLinks = append(page.BrokenLinks, buildBrokenLinks(result, results)...)
+			page.Assets = append(page.Assets, buildAssets(result.Assets)...)
 		}
 
 		report.Pages = append(report.Pages, page)

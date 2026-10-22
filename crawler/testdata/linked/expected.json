@@ -8,6 +8,7 @@
       "depth": 0,
       "http_status": 200,
       "status": "ok",
+      "error": "",
       "seo": {
         "has_title": true,
         "title": "Home",
@@ -26,7 +27,8 @@
           "url": "http://example.test/logo.svg",
           "type": "image",
           "status_code": 200,
-          "size_bytes": 3
+          "size_bytes": 3,
+          "error": ""
         }
       ],
       "discovered_at": "2024-01-02T03:04:05Z"
@@ -36,6 +38,7 @@
       "depth": 1,
       "http_status": 200,
       "status": "ok",
+      "error": "",
       "seo": {
         "has_title": true,
         "title": "About",
@@ -57,6 +60,7 @@
       "depth": 1,
       "http_status": 404,
       "status": "error",
+      "error": "",
       "seo": {
         "has_title": false,
         "title": "",

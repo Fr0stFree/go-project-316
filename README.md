@@ -87,7 +87,7 @@ Run `./bin/crawler --help` for the complete CLI help.
 
 ## JSON Report
 
-The top level contains `root_url`, the requested `depth`, a UTC `generated_at` timestamp, and a URL-sorted `pages` array. Each page includes its URL, depth, HTTP status, `ok` or `error` state, discovery time, SEO fields, broken links, and assets. Failed requests also include an `error` message. Successful assets omit the `error` field.
+The top level contains `root_url`, the requested `depth`, a UTC `generated_at` timestamp, and a URL-sorted `pages` array. Each page includes its URL, depth, HTTP status, `ok` or `error` state, discovery time, SEO fields, broken links, and assets. Every page and asset includes an `error` field with an empty string when there is no error. Empty `broken_links` and `assets` fields are JSON arrays.
 
 ```json
 {
@@ -100,6 +100,7 @@ The top level contains `root_url`, the requested `depth`, a UTC `generated_at` t
       "depth": 0,
       "http_status": 200,
       "status": "ok",
+      "error": "",
       "seo": {
         "has_title": true,
         "title": "Example Domain",

@@ -2,6 +2,7 @@ package crawler_test
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -67,6 +68,7 @@ type fixtureResponse struct {
 	statusCode int
 	bodyFile   string
 	size       int64
+	errorText  string
 }
 
 type analyzeFixture struct {
@@ -97,6 +99,13 @@ func TestAnalyze(t *testing.T) {
 				{method: http.MethodHead, path: "/logo.svg", statusCode: http.StatusOK, size: 3},
 			},
 		},
+		{
+			name:  "network-error",
+			depth: 1,
+			responses: []fixtureResponse{
+				{method: http.MethodGet, path: "/", errorText: "network unavailable"},
+			},
+		},
 	}
 
 	for _, fixture := range fixtures {
@@ -104,6 +113,15 @@ func TestAnalyze(t *testing.T) {
 			mocks := newAnalyzeMocks(t)
 
 			for _, response := range fixture.responses {
+				if response.errorText != "" {
+					mocks.transport.
+						On("RoundTrip", response.method, response.path).
+						Return((*http.Response)(nil), errors.New(response.errorText)).
+						Once()
+
+					continue
+				}
+
 				body := ""
 
 				if response.bodyFile != "" {

@@ -8,6 +8,7 @@
       "depth": 0,
       "http_status": 200,
       "status": "ok",
+      "error": "",
       "seo": {
         "has_title": true,
         "title": "Simple site",
