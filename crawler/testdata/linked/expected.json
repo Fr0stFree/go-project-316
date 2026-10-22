@@ -27,7 +27,7 @@
           "url": "http://example.test/logo.svg",
           "type": "image",
           "status_code": 200,
-          "size_bytes": 3,
+          "size_bytes": 345,
           "error": ""
         }
       ],

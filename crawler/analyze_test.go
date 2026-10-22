@@ -53,22 +53,28 @@ func newAnalyzeMocks(t *testing.T) analyzeMocks {
 	}
 }
 
-func newHTTPResponse(statusCode int, body string, size int64) *http.Response {
+func newHTTPResponse(statusCode int, body string, size int64, contentType string) *http.Response {
+	header := make(http.Header)
+	if contentType != "" {
+		header.Set("Content-Type", contentType)
+	}
+
 	return &http.Response{
 		StatusCode:    statusCode,
 		Body:          io.NopCloser(strings.NewReader(body)),
 		ContentLength: size,
-		Header:        make(http.Header),
+		Header:        header,
 	}
 }
 
 type fixtureResponse struct {
-	method     string
-	path       string
-	statusCode int
-	bodyFile   string
-	size       int64
-	errorText  string
+	method      string
+	path        string
+	statusCode  int
+	bodyFile    string
+	size        int64
+	contentType string
+	errorText   string
 }
 
 type analyzeFixture struct {
@@ -86,17 +92,17 @@ func TestAnalyze(t *testing.T) {
 			name:  "simple",
 			depth: 1,
 			responses: []fixtureResponse{
-				{method: http.MethodGet, path: "/", statusCode: http.StatusOK, bodyFile: "index.html"},
+				{method: http.MethodGet, path: "/", statusCode: http.StatusOK, bodyFile: "index.html", contentType: "text/html"},
 			},
 		},
 		{
 			name:  "linked",
 			depth: 2,
 			responses: []fixtureResponse{
-				{method: http.MethodGet, path: "/", statusCode: http.StatusOK, bodyFile: "index.html"},
-				{method: http.MethodGet, path: "/about", statusCode: http.StatusOK, bodyFile: "about.html"},
+				{method: http.MethodGet, path: "/", statusCode: http.StatusOK, bodyFile: "index.html", contentType: "text/html"},
+				{method: http.MethodGet, path: "/about", statusCode: http.StatusOK, bodyFile: "about.html", contentType: "text/html"},
 				{method: http.MethodGet, path: "/missing", statusCode: http.StatusNotFound},
-				{method: http.MethodHead, path: "/logo.svg", statusCode: http.StatusOK, size: 3},
+				{method: http.MethodHead, path: "/logo.svg", statusCode: http.StatusOK, size: 345, contentType: "image/svg+xml"},
 			},
 		},
 		{
@@ -138,7 +144,7 @@ func TestAnalyze(t *testing.T) {
 
 				mocks.transport.
 					On("RoundTrip", response.method, response.path).
-					Return(newHTTPResponse(response.statusCode, body, size), nil).
+					Return(newHTTPResponse(response.statusCode, body, size, response.contentType), nil).
 					Once()
 			}
 
