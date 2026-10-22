@@ -171,6 +171,7 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]Result, e
 	}
 
 	pool := workerpool.New[task, taskResult](defaultBufferSize)
+	root = httptools.NormalizeURL(root)
 	state := newCrawlerState(root)
 
 	state.markURLSeen(root)

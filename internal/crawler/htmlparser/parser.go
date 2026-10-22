@@ -6,6 +6,9 @@ import (
 	"io"
 	"net/url"
 	"slices"
+	"strings"
+
+	"code/internal/common/httptools"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/samber/lo"
@@ -61,7 +64,9 @@ func findLinks(doc *goquery.Document, pageURL *url.URL) []*url.URL {
 
 	doc.Find("a[href]").Each(func(_ int, s *goquery.Selection) {
 		rawURL, _ := s.Attr("href")
-		if rawURL == "" {
+
+		rawURL = strings.TrimSpace(rawURL)
+		if rawURL == "" || strings.HasPrefix(rawURL, "#") {
 			return
 		}
 
@@ -108,6 +113,8 @@ func findImages(doc *goquery.Document, pageURL *url.URL) []Asset {
 
 	doc.Find("img[src]").Each(func(_ int, s *goquery.Selection) {
 		rawURL, _ := s.Attr("src")
+
+		rawURL = strings.TrimSpace(rawURL)
 		if rawURL == "" {
 			return
 		}
@@ -129,6 +136,8 @@ func findScripts(doc *goquery.Document, pageURL *url.URL) []Asset {
 
 	doc.Find("script[src]").Each(func(_ int, s *goquery.Selection) {
 		rawURL, _ := s.Attr("src")
+
+		rawURL = strings.TrimSpace(rawURL)
 		if rawURL == "" {
 			return
 		}
@@ -150,6 +159,8 @@ func findStyles(doc *goquery.Document, pageURL *url.URL) []Asset {
 
 	doc.Find(`link[rel~="stylesheet"][href]`).Each(func(_ int, s *goquery.Selection) {
 		rawURL, _ := s.Attr("href")
+
+		rawURL = strings.TrimSpace(rawURL)
 		if rawURL == "" {
 			return
 		}
@@ -182,7 +193,5 @@ func resolveURL(rawURL string, pageURL *url.URL) (*url.URL, error) {
 		return nil, errors.New("URL host is empty")
 	}
 
-	absoluteURL.Fragment = ""
-
-	return absoluteURL, nil
+	return httptools.NormalizeURL(absoluteURL), nil
 }
