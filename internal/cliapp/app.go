@@ -95,7 +95,9 @@ func cliAction(ctx context.Context, cmd *cli.Command) error {
 		return cli.Exit(fmt.Sprintf("something went wrong during analysis of `%s`: %v", url, err), 1)
 	}
 
-	fmt.Println(string(data))
+	if _, err := fmt.Fprintln(cmd.Writer, string(data)); err != nil {
+		return cli.Exit(fmt.Sprintf("failed to write report: %v", err), 1)
+	}
 
 	return nil
 }

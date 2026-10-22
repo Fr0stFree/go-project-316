@@ -3,21 +3,31 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"code/internal/cliapp"
+
+	"github.com/urfave/cli/v3"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	app := cliapp.New()
-	if err := app.Run(ctx, os.Args); err != nil {
-		fmt.Fprintf(os.Stderr, "Something went wrong: %v\n", err) // TODO: hide error, log instead
-		os.Exit(1)
+	if err := cliapp.New().Run(ctx, os.Args); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+
+		code := 1
+
+		var exitErr cli.ExitCoder
+		if errors.As(err, &exitErr) {
+			code = exitErr.ExitCode()
+		}
+
+		os.Exit(code)
 	}
 }
