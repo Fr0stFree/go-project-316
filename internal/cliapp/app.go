@@ -80,6 +80,7 @@ func cliAction(ctx context.Context, cmd *cli.Command) error {
 		Depth:       cmd.Int("depth"),
 		Retries:     cmd.Int("retries"),
 		Delay:       cmd.Duration("delay"),
+		RPS:         cmd.Int("rps"),
 		Timeout:     cmd.Duration("timeout"),
 		UserAgent:   cmd.String("user-agent"),
 		Concurrency: cmd.Int("workers"),
