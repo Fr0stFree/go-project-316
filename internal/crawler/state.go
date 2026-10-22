@@ -6,6 +6,7 @@ import (
 )
 
 type crawlerState struct {
+	root    *url.URL
 	pending list.List
 	running int
 
@@ -17,8 +18,9 @@ type crawlerState struct {
 	assets map[string]assetTaskResult
 }
 
-func newCrawlerState() *crawlerState {
+func newCrawlerState(root *url.URL) *crawlerState {
 	return &crawlerState{
+		root:       root,
 		seenURLs:   make(map[string]struct{}),
 		seenAssets: make(map[string]struct{}),
 		pages:      make(map[string]pageTaskResult),

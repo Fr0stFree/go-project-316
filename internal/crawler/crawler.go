@@ -19,7 +19,6 @@ import (
 // Crawler manages concurrent web crawling and tracks discovered URLs and results.
 type Crawler struct {
 	fetcher  *httpfetcher.Fetcher
-	pool     *workerpool.WorkerPool[task, taskResult]
 	now      func() time.Time
 	poolSize int
 	maxDepth int
@@ -152,7 +151,6 @@ func New(client *http.Client, opts ...Option) (*Crawler, error) {
 	c := &Crawler{
 		maxDepth: defaultMaxDepth,
 		fetcher:  httpfetcher.New(client),
-		pool:     workerpool.New[task, taskResult](defaultBufferSize),
 		now:      time.Now,
 		poolSize: defaultPoolSize,
 	}
@@ -172,17 +170,18 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]Result, e
 		return nil, err
 	}
 
-	state := newCrawlerState()
-	state.markURLSeen(root)
+	pool := workerpool.New[task, taskResult](defaultBufferSize)
+	state := newCrawlerState(root)
 
+	state.markURLSeen(root)
 	firstTask := task{url: root, kind: pageTask}
 	state.pending.PushBack(firstTask)
 
-	stop := c.pool.Start(ctx, c.process, c.poolSize)
+	stop := pool.Start(ctx, c.process, c.poolSize)
 	defer stop()
 
 	for state.hasWork() {
-		if err := c.runIteration(ctx, root, state); err != nil {
+		if err := c.runIteration(ctx, pool, state); err != nil {
 			return c.mergeResults(state), err
 		}
 	}
@@ -190,14 +189,18 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]Result, e
 	return c.mergeResults(state), nil
 }
 
-func (c *Crawler) runIteration(ctx context.Context, root *url.URL, state *crawlerState) error {
+func (c *Crawler) runIteration(
+	ctx context.Context,
+	pool *workerpool.WorkerPool[task, taskResult],
+	state *crawlerState,
+) error {
 	var (
 		tasks    chan<- task
 		nextTask task
 	)
 
 	if next := state.pending.Front(); next != nil {
-		tasks = c.pool.Tasks()
+		tasks = pool.Tasks()
 		nextTask = next.Value.(task)
 	}
 
@@ -209,7 +212,7 @@ func (c *Crawler) runIteration(ctx context.Context, root *url.URL, state *crawle
 		state.pending.Remove(state.pending.Front())
 		state.running++
 
-	case result, ok := <-c.pool.Results():
+	case result, ok := <-pool.Results():
 		if !ok {
 			return errors.New("worker pool stopped unexpectedly")
 		}
@@ -218,10 +221,10 @@ func (c *Crawler) runIteration(ctx context.Context, root *url.URL, state *crawle
 
 		switch {
 		case result.page != nil:
-			c.handlePageResult(root, state, *result.page)
+			c.handlePageResult(state, *result.page)
 
 		case result.link != nil:
-			state.links[result.link.url.String()] = *result.link
+			c.handleLinkResult(state, *result.link)
 
 		case result.asset != nil:
 			c.handleAssetResult(state, *result.asset)
@@ -238,7 +241,11 @@ func (c *Crawler) handleAssetResult(state *crawlerState, result assetTaskResult)
 	state.assets[result.url.String()] = result
 }
 
-func (c *Crawler) handlePageResult(root *url.URL, state *crawlerState, result pageTaskResult) {
+func (c *Crawler) handleLinkResult(state *crawlerState, result linkTaskResult) {
+	state.links[result.url.String()] = result
+}
+
+func (c *Crawler) handlePageResult(state *crawlerState, result pageTaskResult) {
 	state.pages[result.url.String()] = result
 
 	if result.html == nil || result.depth >= max(1, c.maxDepth) {
@@ -261,7 +268,7 @@ func (c *Crawler) handlePageResult(root *url.URL, state *crawlerState, result pa
 		kind := pageTask
 
 		depth := result.depth + 1
-		if depth >= max(1, c.maxDepth) || !httptools.IsSameDomain(root, link) {
+		if depth >= max(1, c.maxDepth) || !httptools.IsSameDomain(state.root, link) {
 			kind = linkCheckTask
 		}
 
