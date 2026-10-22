@@ -24,14 +24,13 @@ COVERAGE_PROFILE := coverage.out
 build:
 	@go build -o $(BINARY_PATH) $(ENTRYPOINT_PATH)
 
-start: build
-	@$(BINARY_PATH) $(ARGS)
+run: build
+	@$(BINARY_PATH) $(ARGS) $(if $(strip $(URL)),"$(URL)")
+
+start: run
 
 install:
 	@go mod download
-
-run:
-	@$(BINARY_PATH) $(ARGS)
 
 test:
 	@go test ./... -v
