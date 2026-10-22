@@ -138,19 +138,10 @@ func WithDelay(delay time.Duration) Option {
 	}
 }
 
-// WithMaxAttempts sets the retry configuration for HTTP requests.
-func WithMaxAttempts(maxAttempts int) Option {
+// WithRetries sets the number of retries after the first HTTP request.
+func WithRetries(retries int) Option {
 	return func(c *Crawler) error {
-		if maxAttempts == 0 {
-			return nil
-		}
-
-		err := c.fetcher.SetMaxAttempts(maxAttempts)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return c.fetcher.SetRetries(retries)
 	}
 }
 

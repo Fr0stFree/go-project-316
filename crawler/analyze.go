@@ -44,7 +44,7 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 		opts.HTTPClient,
 		crawler.WithClock(now),
 		crawler.WithUserAgent(opts.UserAgent),
-		crawler.WithMaxAttempts(opts.Retries),
+		crawler.WithRetries(opts.Retries),
 		crawler.WithMaxDepth(opts.Depth),
 		crawler.WithPoolSize(opts.Concurrency),
 		crawler.WithTimeout(opts.Timeout),

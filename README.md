@@ -62,14 +62,14 @@ Set the crawl depth and request limits with flags before the URL:
 go run ./cmd/hexlet-go-crawler --depth 2 --retries 2 --delay 200ms --timeout 10s https://example.com
 ```
 
-`--depth 1` includes only the starting page in `pages`; its links are still checked for failures. The default depth is `10`. The `--retries` value is the maximum number of attempts for a request, so `1` makes a single attempt.
+`--depth 1` includes only the starting page in `pages`; its links are still checked for failures. The default depth is `10`. `--retries N` allows one initial request and up to N additional requests. The default `1` allows at most two requests.
 
 Page links are followed and checked when their hostname matches the starting URL. External page links are skipped; referenced assets can still be fetched from other hosts.
 
 | Flag | Description | Default |
 | --- | --- | --- |
 | `--depth` | Number of page levels to include, starting with the root page | `10` |
-| `--retries` | Maximum attempts per request | `1` |
+| `--retries` | Additional attempts after the first request | `1` |
 | `--delay` | Minimum time between requests, using Go duration syntax | `0s` |
 | `--timeout` | Timeout for each HTTP request | `15s` |
 | `--rps` | Maximum requests per second; takes precedence over `--delay` | `0` (disabled) |

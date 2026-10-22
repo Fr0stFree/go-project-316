@@ -15,19 +15,19 @@ import (
 
 // Fetcher performs HTTP requests with configurable retries, User-Agent headers, and rate limiting.
 type Fetcher struct {
-	client           *http.Client
-	userAgent        string
-	maxRetryAttempts int
-	limiter          rateLimiter
-	retryDelay       time.Duration
+	client     *http.Client
+	userAgent  string
+	maxRetries int
+	limiter    rateLimiter
+	retryDelay time.Duration
 }
 
 const (
 	defaultRequestTimeout = 5 * time.Second
 	defaultUserAgent      = "GoCrawler/1.0"
-	defaultMaxAttempts    = 1
 	defaultBufferSize     = 100
 	defaultRetryDelay     = 1 * time.Second
+	defaultMaxRetries     = 0
 )
 
 // New creates a Fetcher with the specified HTTP client and default settings.
@@ -39,21 +39,21 @@ func New(client *http.Client) *Fetcher {
 	}
 
 	return &Fetcher{
-		client:           client,
-		userAgent:        defaultUserAgent,
-		maxRetryAttempts: defaultMaxAttempts,
-		limiter:          &noopLimiter{},
-		retryDelay:       defaultRetryDelay,
+		client:     client,
+		userAgent:  defaultUserAgent,
+		maxRetries: defaultMaxRetries,
+		limiter:    &noopLimiter{},
+		retryDelay: defaultRetryDelay,
 	}
 }
 
-// SetMaxAttempts sets the maximum number of HTTP request attempts.
-func (h *Fetcher) SetMaxAttempts(attempts int) error {
-	if attempts <= 0 {
-		return errors.New("max attempts must be positive")
+// SetRetries sets the number of retries after the first HTTP request.
+func (h *Fetcher) SetRetries(retries int) error {
+	if retries < 0 {
+		return errors.New("retries cannot be negative")
 	}
 
-	h.maxRetryAttempts = attempts
+	h.maxRetries = retries
 
 	return nil
 }
@@ -102,7 +102,7 @@ func (h *Fetcher) Fetch(ctx context.Context, url *url.URL, method string) (*http
 
 		response, err := h.doRequest(ctx, url, method)
 
-		if !h.shouldRetry(response, err, attempt) {
+		if !h.shouldRetry(ctx, response, err, attempt) {
 			return response, err
 		}
 
@@ -146,14 +146,22 @@ func (h *Fetcher) doRequest(ctx context.Context, url *url.URL, method string) (*
 	return h.client.Do(request)
 }
 
-func (h *Fetcher) shouldRetry(response *http.Response, err error, attempt int) bool {
-	if attempt >= h.maxRetryAttempts-1 {
+func (h *Fetcher) shouldRetry(ctx context.Context, response *http.Response, err error, attempt int) bool {
+	if attempt >= h.maxRetries || ctx.Err() != nil {
 		return false
 	}
 
-	if err != nil || response == nil {
-		return true
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return false
+		}
+
+		if errors.Is(err, context.DeadlineExceeded) {
+			return true
+		}
+
+		return httptools.IsRetryableError(err)
 	}
 
-	return httptools.IsRetryableStatus(response.StatusCode)
+	return response != nil && httptools.IsRetryableStatus(response.StatusCode)
 }
