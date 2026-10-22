@@ -32,14 +32,17 @@ const (
 
 // New creates a Fetcher with the specified HTTP client and default settings.
 func New(client *http.Client) *Fetcher {
-	if client == nil {
-		client = &http.Client{
-			Timeout: defaultRequestTimeout,
-		}
+	customClient := &http.Client{
+		Timeout: defaultRequestTimeout,
+	}
+
+	if client != nil {
+		buf := *client
+		customClient = &buf
 	}
 
 	return &Fetcher{
-		client:     client,
+		client:     customClient,
 		userAgent:  defaultUserAgent,
 		maxRetries: defaultMaxRetries,
 		limiter:    &noopLimiter{},
