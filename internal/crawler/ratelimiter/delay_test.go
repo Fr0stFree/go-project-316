@@ -51,7 +51,7 @@ func TestNewDelayRateLimiter(t *testing.T) {
 	}
 }
 
-func prepareRateLimiter(t *testing.T, delay time.Duration) *ratelimiter.DelayRateLimiter {
+func prepareDelayRateLimiter(t *testing.T, delay time.Duration) *ratelimiter.DelayRateLimiter {
 	t.Helper()
 
 	limiter, err := ratelimiter.NewDelayRateLimiter(delay)
@@ -62,7 +62,7 @@ func prepareRateLimiter(t *testing.T, delay time.Duration) *ratelimiter.DelayRat
 
 func TestDelayRateLimiter_Wait(t *testing.T) {
 	t.Run("first request", func(t *testing.T) {
-		limiter := prepareRateLimiter(t, time.Second)
+		limiter := prepareDelayRateLimiter(t, time.Second)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 		defer cancel()
@@ -72,7 +72,7 @@ func TestDelayRateLimiter_Wait(t *testing.T) {
 
 	t.Run("enforce delay", func(t *testing.T) {
 		delay := 100 * time.Millisecond
-		limiter := prepareRateLimiter(t, delay)
+		limiter := prepareDelayRateLimiter(t, delay)
 
 		require.NoError(t, limiter.Wait(context.Background()))
 
@@ -85,7 +85,7 @@ func TestDelayRateLimiter_Wait(t *testing.T) {
 	})
 
 	t.Run("cancel during delay", func(t *testing.T) {
-		limiter := prepareRateLimiter(t, time.Second)
+		limiter := prepareDelayRateLimiter(t, time.Second)
 
 		require.NoError(t, limiter.Wait(context.Background()))
 
