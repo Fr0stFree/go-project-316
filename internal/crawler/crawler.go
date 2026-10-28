@@ -4,6 +4,7 @@ package crawler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"time"
@@ -165,13 +166,12 @@ func New(client *http.Client, opts ...Option) (*Crawler, error) {
 
 // Run crawls pages starting from rootURL up to the configured maximum depth.
 func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]Result, error) {
-	root, err := url.Parse(rootURL)
+	root, err := c.cleanURL(rootURL)
 	if err != nil {
 		return nil, err
 	}
 
 	pool := workerpool.New[task, taskResult](defaultBufferSize)
-	root = httptools.NormalizeURL(root)
 	state := newCrawlerState(root)
 
 	state.markURLSeen(root)
@@ -337,4 +337,21 @@ func (c *Crawler) mergeResults(state *crawlerState) map[string]Result {
 	}
 
 	return results
+}
+
+func (c *Crawler) cleanURL(rawURL string) (*url.URL, error) {
+	url, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+
+	if url.Scheme != httptools.HTTP && url.Scheme != httptools.HTTPS {
+		return nil, fmt.Errorf("unsupported root URL scheme %q: only http and https are allowed", url.Scheme)
+	}
+
+	if url.Hostname() == "" {
+		return nil, fmt.Errorf("invalid URL: hostname is required")
+	}
+
+	return url, nil
 }

@@ -191,7 +191,7 @@ func resolveURL(rawURL string, pageURL *url.URL) (*url.URL, error) {
 
 	absoluteURL := pageURL.ResolveReference(ref)
 
-	if absoluteURL.Scheme != "http" && absoluteURL.Scheme != "https" {
+	if absoluteURL.Scheme != httptools.HTTP && absoluteURL.Scheme != httptools.HTTPS {
 		return nil, errors.New("unsupported URL scheme")
 	}
 
