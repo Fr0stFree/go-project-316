@@ -57,7 +57,7 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 		return nil, err
 	}
 
-	report := report.Build(opts.URL, opts.Depth, crawlResults, timeutils.UTCNowPretty(now))
+	report := report.Build(opts.URL, opts.Depth, crawlResults, timeutils.UTCTruncatedToSeconds(now))
 
 	return fmttools.ToJSON(report, opts.IndentJSON)
 }

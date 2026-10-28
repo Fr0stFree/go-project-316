@@ -51,7 +51,7 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 	result := pageTaskResult{
 		url:          url,
 		depth:        depth,
-		discoveredAt: timeutils.UTCNowPretty(c.now),
+		discoveredAt: timeutils.UTCTruncatedToSeconds(c.now),
 	}
 
 	response, err := c.fetcher.Fetch(ctx, url, http.MethodGet)
