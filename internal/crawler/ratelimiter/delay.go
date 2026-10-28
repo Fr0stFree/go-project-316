@@ -3,7 +3,6 @@ package ratelimiter
 import (
 	"context"
 	"errors"
-	"sync"
 	"time"
 )
 
@@ -11,7 +10,7 @@ import (
 type DelayRateLimiter struct {
 	delay    time.Duration
 	nextTime time.Time
-	sync.Mutex
+	token    chan struct{}
 }
 
 // NewDelayRateLimiter creates a rate limiter with the specified delay.
@@ -20,33 +19,48 @@ func NewDelayRateLimiter(delay time.Duration) (*DelayRateLimiter, error) {
 		return nil, errors.New("delay must be positive")
 	}
 
-	return &DelayRateLimiter{
+	limiter := &DelayRateLimiter{
 		delay: delay,
-	}, nil
+		token: make(chan struct{}, 1),
+	}
+	limiter.restoreToken()
+
+	return limiter, nil
 }
 
-// Wait blocks for the configured delay or until ctx is canceled.
+// Wait blocks until the next operation is permitted or ctx is canceled.
 func (d *DelayRateLimiter) Wait(ctx context.Context) error {
-	d.Lock()
-	defer d.Unlock()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-d.token:
+	}
+
+	defer d.restoreToken()
 
 	now := time.Now()
 
 	waitUntil := d.nextTime
-	if waitUntil.Before(now) {
-		waitUntil = now
+	if waitUntil.After(now) {
+		timer := time.NewTimer(time.Until(waitUntil))
+		defer timer.Stop()
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+		}
 	}
 
-	timer := time.NewTimer(time.Until(waitUntil))
-	defer timer.Stop()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-
-	case <-timer.C:
-		d.nextTime = time.Now().Add(d.delay)
-
-		return nil
+	if err := ctx.Err(); err != nil {
+		return err
 	}
+
+	d.nextTime = time.Now().Add(d.delay)
+
+	return nil
+}
+
+func (d *DelayRateLimiter) restoreToken() {
+	d.token <- struct{}{}
 }
