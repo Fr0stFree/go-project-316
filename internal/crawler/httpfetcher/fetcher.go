@@ -94,6 +94,17 @@ func (h *Fetcher) SetTimeout(timeout time.Duration) error {
 	return nil
 }
 
+// SetRetryDelay configures the delay between every HTTP request retry.
+func (h *Fetcher) SetRetryDelay(delay time.Duration) error {
+	if delay < time.Duration(0) {
+		return errors.New("delay cannot be negative")
+	}
+
+	h.retryDelay = delay
+
+	return nil
+}
+
 // Fetch performs an HTTP request to the specified URL.
 func (h *Fetcher) Fetch(ctx context.Context, url *url.URL, method string) (*http.Response, error) {
 	for attempt := 0; ; attempt++ {
