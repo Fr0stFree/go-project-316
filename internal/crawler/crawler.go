@@ -353,5 +353,5 @@ func (c *Crawler) cleanURL(rawURL string) (*url.URL, error) {
 		return nil, fmt.Errorf("invalid URL: hostname is required")
 	}
 
-	return url, nil
+	return httptools.NormalizeURL(url), nil
 }
