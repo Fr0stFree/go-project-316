@@ -5,8 +5,8 @@ import (
 	"net/http"
 )
 
-// IsHTMLResponse checks if the given HTTP response has a Content-Type indicating HTML.
-func IsHTMLResponse(response *http.Response) bool {
+// IsMarkupResponse checks if the response has an HTML or XML content type.
+func IsMarkupResponse(response *http.Response) bool {
 	if response == nil {
 		return false
 	}
@@ -18,5 +18,5 @@ func IsHTMLResponse(response *http.Response) bool {
 		return false
 	}
 
-	return mediaType == "text/html"
+	return mediaType == "text/html" || mediaType == "application/xml" || mediaType == "text/xml"
 }

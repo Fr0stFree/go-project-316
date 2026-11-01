@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIsHTMLResponse(t *testing.T) {
+func TestIsMarkupResponse(t *testing.T) {
 	type subTest struct {
 		name     string
 		response *http.Response
@@ -45,6 +45,24 @@ func TestIsHTMLResponse(t *testing.T) {
 			response: &http.Response{
 				Header: http.Header{
 					"Content-Type": {"TEXT/HTML"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "XML content type",
+			response: &http.Response{
+				Header: http.Header{
+					"Content-Type": {"application/xml"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "text XML content type",
+			response: &http.Response{
+				Header: http.Header{
+					"Content-Type": {"text/xml"},
 				},
 			},
 			expected: true,
@@ -101,7 +119,7 @@ func TestIsHTMLResponse(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			actual := httptools.IsHTMLResponse(test.response)
+			actual := httptools.IsMarkupResponse(test.response)
 
 			require.Equal(t, test.expected, actual)
 		})

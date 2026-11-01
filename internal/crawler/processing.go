@@ -78,10 +78,10 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 		result.status = statusError
 	}
 
-	if !httptools.IsHTMLResponse(response) {
+	if !httptools.IsMarkupResponse(response) {
 		slog.DebugContext(
 			ctx,
-			"Response is not HTML",
+			"Response is not HTML or XML",
 			"url", url.String(),
 			"content_type", response.Header.Get("Content-Type"),
 		)

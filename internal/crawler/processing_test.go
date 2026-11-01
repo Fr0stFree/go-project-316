@@ -56,6 +56,22 @@ func TestCrawler_ProcessLinkCheck(t *testing.T) {
 	require.Equal(t, []string{http.MethodHead, http.MethodGet}, methods)
 }
 
+func TestCrawler_ProcessWebPage(t *testing.T) {
+	crawler := newTestCrawler(t, func(_ *http.Request) (*http.Response, error) {
+		response := testResponse(http.StatusOK, -1, "<rss><channel><title>Crawler Blog</title></channel></rss>")
+		response.Header.Set("Content-Type", "application/xml")
+
+		return response, nil
+	})
+	page := mustParseURL(t, "https://example.com/feed.xml")
+
+	result := crawler.processWebPage(context.Background(), page, 1)
+
+	require.NoError(t, result.err)
+	require.NotNil(t, result.html)
+	require.Equal(t, "Crawler Blog", *result.html.Title)
+}
+
 func TestCrawler_ProcessAsset(t *testing.T) {
 	t.Run("size from HEAD", func(t *testing.T) {
 		methods := make([]string, 0, 1)

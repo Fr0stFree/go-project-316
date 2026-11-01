@@ -73,7 +73,7 @@ go run ./cmd/hexlet-go-crawler --depth 2 --retries 2 --delay 200ms --timeout 10s
 
 Links on the starting URL's hostname are followed until the depth limit. At the limit, and for links on other hostnames, the crawler checks the target with `HEAD` but does not add it to `pages`. If the server rejects `HEAD` with 405 or 501, the crawler tries `GET`. A failed check appears in the referring page's `broken_links`. Referenced assets can be fetched from other hosts; when `HEAD` is unsupported or does not provide a size, the crawler uses `GET` to measure the response body.
 
-Hostnames are compared without regard to case, and URL fragments do not create duplicate visits. Only responses with a `text/html` content type are parsed for links and SEO fields. Text in titles, descriptions, and H1 headings is normalized for whitespace; the report records whether each field was present.
+Hostnames are compared without regard to case, and URL fragments do not create duplicate visits. Responses with a `text/html`, `application/xml`, or `text/xml` content type are parsed for links and SEO fields. Text in titles, descriptions, and H1 headings is normalized for whitespace; the report records whether each field was present.
 
 | Flag | Description | Default |
 | --- | --- | --- |
