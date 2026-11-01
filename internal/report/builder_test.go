@@ -92,8 +92,6 @@ func TestBuild(t *testing.T) {
 				Status:       "error",
 				Error:        "page not found",
 				DiscoveredAt: now,
-				BrokenLinks:  []report.NodeLink{},
-				Assets:       []report.Asset{},
 			},
 		},
 	}, actual)

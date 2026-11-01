@@ -33,14 +33,14 @@ func Build(rootURL string, maxDepth int, results map[string]crawler.Result, gene
 			HTTPStatus:   result.HTTPStatus,
 			Status:       result.Status,
 			Error:        errToStr(result.Err),
-			BrokenLinks:  make([]NodeLink, 0),
-			Assets:       make([]Asset, 0),
 			DiscoveredAt: result.DiscoveredAt,
 			SEO:          buildSEO(result.HTML),
 		}
+		// Hexlet integration tests expect [] after a completed request and null
+		// after a failed one; JSON tags omit empty error messages.
 		if result.Err == nil {
-			page.BrokenLinks = append(page.BrokenLinks, buildBrokenLinks(result, results)...)
-			page.Assets = append(page.Assets, buildAssets(result.Assets)...)
+			page.BrokenLinks = buildBrokenLinks(result, results)
+			page.Assets = buildAssets(result.Assets)
 		}
 
 		report.Pages = append(report.Pages, page)
