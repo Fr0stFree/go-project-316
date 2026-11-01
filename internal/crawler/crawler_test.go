@@ -2,6 +2,7 @@ package crawler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"testing"
@@ -109,6 +110,30 @@ func TestNew(t *testing.T) {
 	})
 }
 
+func TestCrawler_Run(t *testing.T) {
+	type subTest struct {
+		name string
+		url  string
+	}
+
+	tests := []subTest{
+		{name: "unsupported scheme", url: "ftp://example.com"},
+		{name: "missing hostname", url: "https:///example.com"},
+		{name: "invalid URL", url: "https://%"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			crawler := newNilCrawler(t)
+
+			results, err := crawler.Run(context.Background(), test.url)
+
+			require.Error(t, err)
+			require.Nil(t, results)
+		})
+	}
+}
+
 func TestCrawler_HandleAssetResult(t *testing.T) {
 	crawler := newNilCrawler(t)
 	root := mustParseURL(t, "https://example.com")
@@ -208,9 +233,7 @@ func TestCrawler_HandlePageResult(t *testing.T) {
 	})
 
 	t.Run("link at depth boundary", func(t *testing.T) {
-		crawler, err := New(nil, WithMaxDepth(2))
-		require.NoError(t, err)
-
+		crawler := newNilCrawler(t, WithMaxDepth(2))
 		state := newCrawlerState(root)
 		result := pageTaskResult{
 			url:   root,
@@ -288,4 +311,44 @@ func TestCrawler_HandlePageResult(t *testing.T) {
 		require.Equal(t, linkCheckTask, scheduled.kind)
 		require.Equal(t, 1, scheduled.depth)
 	})
+}
+
+func TestCrawler_MergeResults(t *testing.T) {
+	crawler := newNilCrawler(t)
+	root := mustParseURL(t, "https://example.com/")
+	link := mustParseURL(t, "https://other.com/missing")
+	asset := mustParseURL(t, "https://example.com/logo.png")
+	state := newCrawlerState(root)
+	state.pages[root.String()] = pageTaskResult{
+		url:        root,
+		httpStatus: http.StatusOK,
+		status:     statusOK,
+		html: &htmlparser.ParsedHTML{
+			Assets: []htmlparser.Asset{{Type: htmlparser.AssetImage, URL: asset}},
+		},
+	}
+	state.assets[asset.String()] = assetTaskResult{
+		url:        asset,
+		httpStatus: http.StatusOK,
+		sizeBytes:  128,
+	}
+	state.links[link.String()] = linkTaskResult{
+		url:        link,
+		depth:      1,
+		httpStatus: http.StatusNotFound,
+		err:        errors.New("not found"),
+	}
+
+	results := crawler.mergeResults(state)
+
+	require.Len(t, results, 2)
+	require.Equal(t, []AssetResult{{
+		URL:        asset.String(),
+		Type:       htmlparser.AssetImage,
+		StatusCode: http.StatusOK,
+		SizeBytes:  128,
+	}}, results[root.String()].Assets)
+	require.True(t, results[link.String()].CheckedOnly)
+	require.Equal(t, statusError, results[link.String()].Status)
+	require.Equal(t, http.StatusNotFound, results[link.String()].HTTPStatus)
 }
