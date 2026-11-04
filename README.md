@@ -96,16 +96,16 @@ Run `./bin/crawler --help` for the complete CLI help.
 
 ## JSON Report
 
-The top level contains `root_url`, the requested `depth`, a UTC `generated_at` timestamp, and a URL-sorted `pages` array. Each page includes its URL, depth, HTTP status, `ok` or `error` state, discovery time, SEO fields, broken links, and assets. Pages and assets include `error` only when there is an error message. An HTTP failure can have `status: "error"` without an `error` field. Empty `broken_links` and `assets` fields are JSON arrays after a completed request, and `null` when the page request itself failed.
+The top level contains `root_url`, the requested `depth`, a UTC `generated_at` timestamp, and a URL-sorted `pages` array. Each page includes its URL, depth, HTTP status, `ok` or `error` state, discovery time, SEO fields, broken links, and assets. An empty `error` is omitted from pages, links, and assets; a broken link without an HTTP response also omits `status_code`. An HTTP 404 page can have `status: "error"` without an `error` message. Empty `broken_links` and `assets` are `[]` after a completed page request and `null` when the page request itself fails.
 
 HTTP errors and failed requests to valid HTTP(S) URLs are recorded in the report. Invalid root URLs cause the CLI to exit with a nonzero status and write the error to standard error.
 
-This example shows the report for a single-page test site:
+This example shows a page with a broken link and an image asset, followed by the linked pages:
 
 ```json
 {
   "root_url": "http://example.test",
-  "depth": 1,
+  "depth": 2,
   "generated_at": "2024-01-02T03:04:05Z",
   "pages": [
     {
@@ -115,10 +115,59 @@ This example shows the report for a single-page test site:
       "status": "ok",
       "seo": {
         "has_title": true,
-        "title": "Simple site",
+        "title": "Home",
+        "has_description": true,
+        "description": "A site with links",
+        "has_h1": true
+      },
+      "broken_links": [
+        {
+          "url": "http://example.test/missing",
+          "status_code": 404
+        }
+      ],
+      "assets": [
+        {
+          "url": "http://example.test/logo.svg",
+          "type": "image",
+          "status_code": 200,
+          "size_bytes": 345
+        }
+      ],
+      "discovered_at": "2024-01-02T03:04:05Z"
+    },
+    {
+      "url": "http://example.test/about",
+      "depth": 1,
+      "http_status": 200,
+      "status": "ok",
+      "seo": {
+        "has_title": true,
+        "title": "About",
         "has_description": false,
         "description": "",
         "has_h1": true
+      },
+      "broken_links": [
+        {
+          "url": "http://example.test/missing",
+          "status_code": 404
+        }
+      ],
+      "assets": [],
+      "discovered_at": "2024-01-02T03:04:05Z"
+    },
+    {
+      "url": "http://example.test/missing",
+      "depth": 1,
+      "http_status": 404,
+      "status": "error",
+      "seo": {
+        "has_title": false,
+        "title": "",
+        "has_description": false,
+        "description": "",
+        "has_h1": false
       },
       "broken_links": [],
       "assets": [],

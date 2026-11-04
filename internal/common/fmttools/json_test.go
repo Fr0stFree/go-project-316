@@ -1,10 +1,12 @@
 package fmttools_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"code/internal/common/fmttools"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,7 +50,14 @@ func TestToJSON(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			require.JSONEq(t, test.expected, string(actual))
+			assert.Equal(t, test.expected, string(actual))
+
+			var expectedData any
+			require.NoError(t, json.Unmarshal([]byte(test.expected), &expectedData))
+
+			var actualData any
+			require.NoError(t, json.Unmarshal(actual, &actualData))
+			assert.Equal(t, expectedData, actualData)
 		})
 	}
 }
