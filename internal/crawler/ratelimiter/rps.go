@@ -15,7 +15,7 @@ type RPSRateLimiter struct {
 // NewRPSRateLimiter creates a rate limiter that allows up to rps operations per second.
 func NewRPSRateLimiter(ctx context.Context, rps int) (*RPSRateLimiter, error) {
 	if rps <= 0 || time.Duration(rps) > time.Second {
-		return nil, errors.New("rps must be more than 1")
+		return nil, errors.New("rps must be between 1 and 1000000000")
 	}
 
 	l := RPSRateLimiter{

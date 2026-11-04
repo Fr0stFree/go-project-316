@@ -55,7 +55,7 @@ func TestNewRPSRateLimiter(t *testing.T) {
 			limiter, err := ratelimiter.NewRPSRateLimiter(ctx, test.rps)
 
 			if test.wantErr {
-				require.Error(t, err)
+				require.EqualError(t, err, "rps must be between 1 and 1000000000")
 				require.Nil(t, limiter)
 
 				return

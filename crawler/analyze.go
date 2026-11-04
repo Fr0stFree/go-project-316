@@ -35,6 +35,9 @@ type Report = report.Report
 
 // Analyze crawls the configured URL and returns the resulting report.
 func Analyze(ctx context.Context, opts Options) ([]byte, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	now := lo.Ternary(opts.Now != nil, opts.Now, time.Now)
 
 	crawl, err := crawler.New(

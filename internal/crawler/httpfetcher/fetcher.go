@@ -41,13 +41,22 @@ func New(client *http.Client) *Fetcher {
 		customClient = &buf
 	}
 
-	return &Fetcher{
+	fetcher := &Fetcher{
 		client:     customClient,
 		userAgent:  defaultUserAgent,
 		maxRetries: defaultMaxRetries,
 		limiter:    &noopLimiter{},
 		retryDelay: defaultRetryDelay,
 	}
+
+	transport := customClient.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+
+	customClient.Transport = &rateLimitedTransport{RoundTripper: transport, fetcher: fetcher}
+
+	return fetcher
 }
 
 // SetRetries sets the number of retries after the first HTTP request.
@@ -72,7 +81,7 @@ func (h *Fetcher) SetUserAgent(userAgent string) error {
 	return nil
 }
 
-// SetRateLimiter configures the rate limiter used between retry attempts.
+// SetRateLimiter configures the rate limiter used for each HTTP request.
 func (h *Fetcher) SetRateLimiter(limiter rateLimiter) error {
 	if limiter == nil {
 		return errors.New("expected a limiter, got nil")
@@ -152,10 +161,6 @@ func (h *Fetcher) doRequest(ctx context.Context, url *url.URL, method string) (*
 	}
 
 	request.Header.Set("User-Agent", h.userAgent)
-
-	if err := h.limiter.Wait(ctx); err != nil {
-		return nil, err
-	}
 
 	return h.client.Do(request)
 }
