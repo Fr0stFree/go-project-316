@@ -69,7 +69,7 @@ Set the crawl depth and request limits with flags before the URL:
 go run ./cmd/hexlet-go-crawler --depth 2 --retries 2 --delay 200ms --timeout 10s https://example.com
 ```
 
-`--depth 1` includes only the starting page in `pages`; its links are still checked for failures. The default depth is `10`. `--retries N` allows one initial request and up to N additional attempts for temporary failures such as 429, 5xx, or retryable network errors. The default is `0`, so requests are not retried.
+`--depth 1` includes only the starting page in `pages`; its links are still checked for failures. The default depth is `10`. `--retries N` allows one initial request and up to N additional attempts for temporary failures such as 429, 5xx, or retryable network errors. The default is `1`, so temporary failures get one additional attempt.
 
 Links on the starting URL's hostname are followed until the depth limit. At the limit, and for links on other hostnames, the crawler checks the target with `HEAD` but does not add it to `pages`. If the server rejects `HEAD` with 405 or 501, the crawler tries `GET`. A failed check appears in the referring page's `broken_links`. Referenced assets can be fetched from other hosts; when `HEAD` is unsupported or does not provide a size, the crawler uses `GET` to measure the response body.
 
@@ -78,7 +78,7 @@ Hostnames are compared without regard to case, and URL fragments do not create d
 | Flag | Description | Default |
 | --- | --- | --- |
 | `--depth` | Number of page levels to include, starting with the root page | `10` |
-| `--retries` | Additional attempts after the first request | `0` |
+| `--retries` | Additional attempts after the first request | `1` |
 | `--delay` | Minimum time between requests, using Go duration syntax | `0s` |
 | `--timeout` | Timeout for each HTTP request | `15s` |
 | `--rps` | Maximum requests per second; takes precedence over `--delay` | `0` (disabled) |

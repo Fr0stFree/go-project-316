@@ -39,7 +39,7 @@ var cliFlags = []cli.Flag{
 	},
 	&cli.IntFlag{
 		Name:  "retries",
-		Value: 0,
+		Value: 1,
 		Usage: "number of retries after the first request",
 	},
 	&cli.DurationFlag{
