@@ -38,7 +38,7 @@ type Asset struct {
 type NodeLink struct {
 	URL        string `json:"url"`
 	Error      string `json:"error,omitempty"`
-	StatusCode int    `json:"status_code,omitempty"`
+	StatusCode int    `json:"status_code"`
 }
 
 // SEO represents basic SEO metadata extracted from an HTML page.
