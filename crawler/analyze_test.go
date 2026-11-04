@@ -1,6 +1,7 @@
 package crawler_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -20,6 +21,12 @@ import (
 
 type mockHTTPTransport struct {
 	mock.Mock
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
 }
 
 func (m *mockHTTPTransport) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -401,5 +408,118 @@ func TestAnalyze(t *testing.T) {
 		assert.Equal(t, http.StatusOK, report.Pages[0].Assets[0].StatusCode)
 		assert.Equal(t, 345, report.Pages[0].Assets[0].SizeBytes)
 		assert.Empty(t, report.Pages[0].Assets[0].Error)
+	})
+
+	t.Run("should report HTTP 500 in JSON", func(t *testing.T) {
+		mocks := newAnalyzeMocks(t)
+		mocks.transport.On("RoundTrip", http.MethodGet, "example.test", "/").
+			Return(newHTTPResponse(http.StatusInternalServerError, "", 0, ""), nil).
+			Once()
+
+		data, err := crawler.Analyze(t.Context(), crawler.Options{
+			URL:        "http://example.test",
+			Depth:      1,
+			HTTPClient: mocks.client,
+		})
+		require.NoError(t, err)
+
+		var report crawler.Report
+		require.NoError(t, json.Unmarshal(data, &report))
+		require.Len(t, report.Pages, 1)
+		assert.Equal(t, http.StatusInternalServerError, report.Pages[0].HTTPStatus)
+		assert.Equal(t, "error", report.Pages[0].Status)
+		assert.Empty(t, report.Pages[0].Error)
+		assert.Empty(t, report.Pages[0].BrokenLinks)
+		assert.Empty(t, report.Pages[0].Assets)
+	})
+
+	t.Run("should report request timeout in JSON", func(t *testing.T) {
+		client := &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			<-request.Context().Done()
+
+			return nil, request.Context().Err()
+		})}
+
+		data, err := crawler.Analyze(t.Context(), crawler.Options{
+			URL:        "http://example.test",
+			Depth:      1,
+			Timeout:    20 * time.Millisecond,
+			HTTPClient: client,
+		})
+		require.NoError(t, err)
+
+		var report crawler.Report
+		require.NoError(t, json.Unmarshal(data, &report))
+		require.Len(t, report.Pages, 1)
+		assert.Zero(t, report.Pages[0].HTTPStatus)
+		assert.Equal(t, "error", report.Pages[0].Status)
+		assert.Contains(t, report.Pages[0].Error, context.DeadlineExceeded.Error())
+	})
+
+	t.Run("should return completed pages after cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		started := make(chan struct{})
+
+		release := make(chan struct{})
+		defer close(release)
+
+		client := &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			switch request.URL.Path {
+			case "":
+				response := newHTTPResponse(http.StatusOK, `<title>Ready</title><a href="/slow">Slow</a>`, 0, "text/html")
+				response.Request = request
+
+				return response, nil
+			case "/slow":
+				close(started)
+				<-request.Context().Done()
+				<-release
+
+				return nil, request.Context().Err()
+			default:
+				return nil, errors.New("unexpected URL")
+			}
+		})}
+
+		type analyzeResult struct {
+			data []byte
+			err  error
+		}
+
+		result := make(chan analyzeResult, 1)
+
+		go func() {
+			data, err := crawler.Analyze(ctx, crawler.Options{
+				URL:         "http://example.test",
+				Depth:       2,
+				Concurrency: 1,
+				HTTPClient:  client,
+			})
+			result <- analyzeResult{data: data, err: err}
+		}()
+
+		select {
+		case <-started:
+		case <-time.After(5 * time.Second):
+			t.Fatal("the second request did not start")
+		}
+
+		cancel()
+
+		select {
+		case outcome := <-result:
+			require.NoError(t, outcome.err)
+
+			var report crawler.Report
+			require.NoError(t, json.Unmarshal(outcome.data, &report))
+			require.Len(t, report.Pages, 1)
+			assert.Equal(t, "http://example.test", report.Pages[0].URL)
+			assert.Equal(t, http.StatusOK, report.Pages[0].HTTPStatus)
+			assert.Equal(t, "Ready", report.Pages[0].SEO.Title)
+		case <-time.After(5 * time.Second):
+			t.Fatal("Analyze did not return after cancellation")
+		}
 	})
 }
