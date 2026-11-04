@@ -292,4 +292,114 @@ func TestAnalyze(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("should report asset request outcomes", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			headStatus int
+			headError  string
+			getBody    string
+			wantStatus int
+			wantSize   int
+			wantError  string
+		}{
+			{
+				name:       "should use GET when HEAD is not supported",
+				headStatus: http.StatusMethodNotAllowed,
+				getBody:    "hello",
+				wantStatus: http.StatusOK,
+				wantSize:   5,
+			},
+			{
+				name:       "should report HTTP error from HEAD",
+				headStatus: http.StatusNotFound,
+				wantStatus: http.StatusNotFound,
+				wantError:  "unexpected HTTP status: 404",
+			},
+			{
+				name:      "should report network error from HEAD",
+				headError: "network unavailable",
+				wantError: "network unavailable",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				mocks := newAnalyzeMocks(t)
+				mocks.transport.On("RoundTrip", http.MethodGet, "example.test", "/").
+					Return(newHTTPResponse(http.StatusOK, `<img src="/logo.png">`, 0, "text/html"), nil).
+					Once()
+
+				if test.headError != "" {
+					mocks.transport.On("RoundTrip", http.MethodHead, "example.test", "/logo.png").
+						Return((*http.Response)(nil), errors.New(test.headError)).
+						Once()
+				} else {
+					mocks.transport.On("RoundTrip", http.MethodHead, "example.test", "/logo.png").
+						Return(newHTTPResponse(test.headStatus, "", 0, ""), nil).
+						Once()
+				}
+
+				if test.getBody != "" {
+					mocks.transport.On("RoundTrip", http.MethodGet, "example.test", "/logo.png").
+						Return(newHTTPResponse(http.StatusOK, test.getBody, int64(len(test.getBody)), "image/png"), nil).
+						Once()
+				}
+
+				data, err := crawler.Analyze(t.Context(), crawler.Options{
+					URL:        "http://example.test",
+					Depth:      1,
+					HTTPClient: mocks.client,
+				})
+				require.NoError(t, err)
+
+				var report crawler.Report
+				require.NoError(t, json.Unmarshal(data, &report))
+				require.Len(t, report.Pages, 1)
+				require.Len(t, report.Pages[0].Assets, 1)
+
+				asset := report.Pages[0].Assets[0]
+				assert.Equal(t, "http://example.test/logo.png", asset.URL)
+				assert.Equal(t, test.wantStatus, asset.StatusCode)
+				assert.Equal(t, test.wantSize, asset.SizeBytes)
+
+				if test.wantError == "" {
+					assert.Empty(t, asset.Error)
+				} else {
+					assert.Contains(t, asset.Error, test.wantError)
+				}
+			})
+		}
+	})
+
+	t.Run("should reuse one asset result across pages", func(t *testing.T) {
+		mocks := newAnalyzeMocks(t)
+		mocks.transport.On("RoundTrip", http.MethodGet, "example.test", "/").
+			Return(newHTTPResponse(http.StatusOK, `<a href="/about">About</a><img src="/logo.png">`, 0, "text/html"), nil).
+			Once()
+		mocks.transport.On("RoundTrip", http.MethodGet, "example.test", "/about").
+			Return(newHTTPResponse(http.StatusOK, `<img src="/logo.png">`, 0, "text/html"), nil).
+			Once()
+		mocks.transport.On("RoundTrip", http.MethodHead, "example.test", "/logo.png").
+			Return(newHTTPResponse(http.StatusOK, "", 345, "image/png"), nil).
+			Once()
+
+		data, err := crawler.Analyze(t.Context(), crawler.Options{
+			URL:        "http://example.test",
+			Depth:      2,
+			HTTPClient: mocks.client,
+		})
+		require.NoError(t, err)
+
+		var report crawler.Report
+		require.NoError(t, json.Unmarshal(data, &report))
+		require.Len(t, report.Pages, 2)
+		require.Len(t, report.Pages[0].Assets, 1)
+		require.Len(t, report.Pages[1].Assets, 1)
+		assert.Equal(t, report.Pages[0].Assets[0], report.Pages[1].Assets[0])
+		assert.Equal(t, "http://example.test/logo.png", report.Pages[0].Assets[0].URL)
+		assert.Equal(t, http.StatusOK, report.Pages[0].Assets[0].StatusCode)
+		assert.Equal(t, 345, report.Pages[0].Assets[0].SizeBytes)
+		assert.Empty(t, report.Pages[0].Assets[0].Error)
+	})
 }
