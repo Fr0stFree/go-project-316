@@ -3,8 +3,11 @@ package crawler
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -131,6 +134,143 @@ func TestCrawler_Run(t *testing.T) {
 
 			require.Error(t, err)
 			require.Nil(t, results)
+		})
+	}
+
+	for _, test := range []struct {
+		name       string
+		shortFirst bool
+	}{
+		{name: "shorter path finishes first", shortFirst: true},
+		{name: "longer path finishes first", shortFirst: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			releaseSlow := make(chan struct{})
+			releaseTarget := make(chan struct{})
+			targetStarted := make(chan struct{}, 1)
+			shorterProcessed := make(chan struct{}, 1)
+			longerProcessed := make(chan struct{}, 1)
+			requests := make(map[string]int)
+
+			var mu sync.Mutex
+
+			transport := roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+				path := request.URL.Path
+
+				mu.Lock()
+				requests[request.Method+" "+path]++
+				mu.Unlock()
+
+				var body string
+
+				switch path {
+				case "/":
+					body = `<a href="/fast">fast</a><a href="/slow">slow</a>`
+				case "/fast":
+					body = `<a href="/via">via</a>`
+				case "/via":
+					body = `<a href="/target">target</a>`
+				case "/slow":
+					select {
+					case <-releaseSlow:
+					case <-request.Context().Done():
+						return nil, request.Context().Err()
+					}
+
+					body = `<a href="/target">target</a><img src="/signal.png">`
+				case "/target":
+					targetStarted <- struct{}{}
+
+					if test.shortFirst {
+						select {
+						case <-releaseTarget:
+						case <-request.Context().Done():
+							return nil, request.Context().Err()
+						}
+					}
+
+					body = `<a href="/child">child</a>`
+				case "/signal.png":
+					shorterProcessed <- struct{}{}
+				case "/child":
+					if request.Method == http.MethodHead {
+						longerProcessed <- struct{}{}
+					}
+				default:
+					t.Errorf("unexpected request: %s %s", request.Method, path)
+				}
+
+				header := make(http.Header)
+				header.Set("Content-Type", "text/html")
+
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     header,
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Request:    request,
+				}, nil
+			})
+
+			crawler, err := New(&http.Client{Transport: transport}, WithMaxDepth(4), WithPoolSize(4))
+			require.NoError(t, err)
+
+			type runResult struct {
+				results map[string]Result
+				err     error
+			}
+
+			finished := make(chan runResult, 1)
+
+			go func() {
+				results, err := crawler.Run(ctx, "https://example.com/")
+				finished <- runResult{results: results, err: err}
+			}()
+
+			select {
+			case <-targetStarted:
+			case <-ctx.Done():
+				t.Fatal("target request did not start")
+			}
+
+			if test.shortFirst {
+				close(releaseSlow)
+
+				select {
+				case <-shorterProcessed:
+				case <-ctx.Done():
+					t.Fatal("shorter path was not processed")
+				}
+
+				close(releaseTarget)
+			} else {
+				select {
+				case <-longerProcessed:
+				case <-ctx.Done():
+					t.Fatal("longer path was not processed")
+				}
+
+				close(releaseSlow)
+			}
+
+			var result runResult
+			select {
+			case result = <-finished:
+			case <-ctx.Done():
+				t.Fatal("crawler did not finish")
+			}
+
+			require.NoError(t, result.err)
+			require.Len(t, result.results, 6)
+			require.Equal(t, 2, result.results["https://example.com/target"].Depth)
+			require.Equal(t, 3, result.results["https://example.com/child"].Depth)
+			require.False(t, result.results["https://example.com/child"].CheckedOnly)
+			mu.Lock()
+			require.Equal(t, 1, requests["GET /target"])
+			require.Equal(t, 1, requests["GET /child"])
+			mu.Unlock()
 		})
 	}
 }

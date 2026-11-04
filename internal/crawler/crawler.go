@@ -174,7 +174,8 @@ func (c *Crawler) Run(ctx context.Context, rootURL string) (map[string]Result, e
 	pool := workerpool.New[task, taskResult](defaultBufferSize)
 	state := newCrawlerState(root)
 
-	state.markURLSeen(root)
+	state.recordURL(root, 0)
+	state.markPageScheduled(root)
 	firstTask := task{url: root, kind: pageTask}
 	state.pending.PushBack(firstTask)
 
@@ -247,7 +248,7 @@ func (c *Crawler) handleLinkResult(state *crawlerState, result linkTaskResult) {
 }
 
 func (c *Crawler) handlePageResult(state *crawlerState, result pageTaskResult) {
-	state.pages[httptools.URLKey(result.url)] = result
+	result = state.savePage(result)
 
 	if result.html == nil || result.depth >= max(1, c.maxDepth) {
 		return
@@ -262,18 +263,28 @@ func (c *Crawler) handlePageResult(state *crawlerState, result pageTaskResult) {
 	}
 
 	for _, link := range result.html.Links {
-		if !state.markURLSeen(link) {
+		depth := result.depth + 1
+		key := httptools.URLKey(link)
+
+		first, improved := state.recordURL(link, depth)
+		if !improved {
 			continue
 		}
 
-		kind := pageTask
+		if depth < max(1, c.maxDepth) && httptools.IsSameDomain(state.root, link) {
+			if page, done := state.pages[key]; done {
+				page.depth = depth
+				c.handlePageResult(state, page)
+			} else if state.markPageScheduled(link) {
+				state.pending.PushBack(task{url: link, depth: depth, kind: pageTask})
+			}
 
-		depth := result.depth + 1
-		if depth >= max(1, c.maxDepth) || !httptools.IsSameDomain(state.root, link) {
-			kind = linkCheckTask
+			continue
 		}
 
-		state.pending.PushBack(task{url: link, depth: depth, kind: kind})
+		if first {
+			state.pending.PushBack(task{url: link, depth: depth, kind: linkCheckTask})
+		}
 	}
 }
 
@@ -320,6 +331,10 @@ func (c *Crawler) mergeResults(state *crawlerState) map[string]Result {
 	}
 
 	for key, link := range state.links {
+		if _, exists := state.pages[key]; exists {
+			continue
+		}
+
 		status := lo.Ternary(
 			link.err != nil || link.httpStatus >= http.StatusBadRequest,
 			statusError,
@@ -328,7 +343,7 @@ func (c *Crawler) mergeResults(state *crawlerState) map[string]Result {
 
 		results[key] = Result{
 			URL:         link.url,
-			Depth:       link.depth,
+			Depth:       state.minDepth(link.url, link.depth),
 			CheckedOnly: true,
 			HTTPStatus:  link.httpStatus,
 			Status:      status,
