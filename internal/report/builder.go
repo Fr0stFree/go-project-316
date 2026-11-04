@@ -9,6 +9,7 @@ import (
 
 	"github.com/samber/lo"
 
+	"code/internal/common/httptools"
 	"code/internal/crawler"
 	"code/internal/crawler/htmlparser"
 )
@@ -73,7 +74,7 @@ func buildBrokenLinks(current crawler.Result, all map[string]crawler.Result) []N
 	}
 
 	return lo.FilterMap(current.HTML.Links, func(link *url.URL, _ int) (NodeLink, bool) {
-		target, exists := all[link.String()]
+		target, exists := all[httptools.URLKey(link)]
 		if !exists || (target.Err == nil && target.HTTPStatus < 400) {
 			return NodeLink{}, false
 		}

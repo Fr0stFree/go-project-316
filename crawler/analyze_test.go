@@ -28,9 +28,14 @@ func (m *mockHTTPTransport) RoundTrip(request *http.Request) (*http.Response, er
 		path = "/"
 	}
 
-	args := m.Called(request.Method, path)
+	args := m.Called(request.Method, request.URL.Host, path)
 
-	return args.Get(0).(*http.Response), args.Error(1)
+	response := args.Get(0).(*http.Response)
+	if response != nil {
+		response.Request = request
+	}
+
+	return response, args.Error(1)
 }
 
 type analyzeMocks struct {
@@ -121,7 +126,7 @@ func TestAnalyze(t *testing.T) {
 			for _, response := range fixture.responses {
 				if response.errorText != "" {
 					mocks.transport.
-						On("RoundTrip", response.method, response.path).
+						On("RoundTrip", response.method, "example.test", response.path).
 						Return((*http.Response)(nil), errors.New(response.errorText)).
 						Once()
 
@@ -143,7 +148,7 @@ func TestAnalyze(t *testing.T) {
 				}
 
 				mocks.transport.
-					On("RoundTrip", response.method, response.path).
+					On("RoundTrip", response.method, "example.test", response.path).
 					Return(newHTTPResponse(response.statusCode, body, size, response.contentType), nil).
 					Once()
 			}
@@ -169,4 +174,71 @@ func TestAnalyze(t *testing.T) {
 			assert.Equal(t, expected, actual)
 		})
 	}
+}
+
+func TestAnalyzeRedirectedPage(t *testing.T) {
+	t.Run("should resolve links and assets against the final document URL", func(t *testing.T) {
+		mocks := newAnalyzeMocks(t)
+		redirect := newHTTPResponse(http.StatusFound, "", 0, "")
+		redirect.Header.Set("Location", "/new/page")
+		mocks.transport.On("RoundTrip", http.MethodGet, "example.test", "/old/page").Return(redirect, nil).Once()
+		mocks.transport.On("RoundTrip", http.MethodGet, "example.test", "/new/page").
+			Return(newHTTPResponse(http.StatusOK, `<a href="missing">Missing</a><img src="logo.png">`, 0, "text/html"), nil).
+			Once()
+		mocks.transport.On("RoundTrip", http.MethodHead, "example.test", "/new/missing").
+			Return(newHTTPResponse(http.StatusNotFound, "", 0, ""), nil).
+			Once()
+		mocks.transport.On("RoundTrip", http.MethodHead, "example.test", "/new/logo.png").
+			Return(newHTTPResponse(http.StatusOK, "", 42, "image/png"), nil).
+			Once()
+
+		data, err := crawler.Analyze(t.Context(), crawler.Options{
+			URL:        "http://example.test/old/page",
+			Depth:      1,
+			HTTPClient: mocks.client,
+		})
+		require.NoError(t, err)
+
+		var report crawler.Report
+		require.NoError(t, json.Unmarshal(data, &report))
+		require.Len(t, report.Pages, 1)
+		require.Len(t, report.Pages[0].BrokenLinks, 1)
+		require.Len(t, report.Pages[0].Assets, 1)
+		assert.Equal(t, "http://example.test/old/page", report.Pages[0].URL)
+		assert.Equal(t, "http://example.test/new/missing", report.Pages[0].BrokenLinks[0].URL)
+		assert.Equal(t, http.StatusNotFound, report.Pages[0].BrokenLinks[0].StatusCode)
+		assert.Equal(t, "http://example.test/new/logo.png", report.Pages[0].Assets[0].URL)
+		assert.Equal(t, 42, report.Pages[0].Assets[0].SizeBytes)
+	})
+}
+
+func TestAnalyzeEquivalentExternalLinks(t *testing.T) {
+	t.Run("should check one resource and report both link spellings", func(t *testing.T) {
+		mocks := newAnalyzeMocks(t)
+		mocks.transport.On("RoundTrip", http.MethodGet, "example.test", "/").
+			Return(newHTTPResponse(http.StatusOK,
+				`<a href="http://other.test">First</a><a href="http://other.test/">Second</a>`,
+				0, "text/html"), nil).
+			Once()
+		mocks.transport.On("RoundTrip", http.MethodHead, "other.test", "/").
+			Return(newHTTPResponse(http.StatusNotFound, "", 0, ""), nil).
+			Once()
+
+		data, err := crawler.Analyze(t.Context(), crawler.Options{
+			URL:        "http://example.test",
+			Depth:      1,
+			HTTPClient: mocks.client,
+		})
+		require.NoError(t, err)
+
+		var report crawler.Report
+		require.NoError(t, json.Unmarshal(data, &report))
+		require.Len(t, report.Pages, 1)
+		assert.Equal(t, "http://example.test", report.Pages[0].URL)
+		require.Len(t, report.Pages[0].BrokenLinks, 2)
+		assert.Equal(t, "http://other.test", report.Pages[0].BrokenLinks[0].URL)
+		assert.Equal(t, "http://other.test/", report.Pages[0].BrokenLinks[1].URL)
+		assert.Equal(t, http.StatusNotFound, report.Pages[0].BrokenLinks[0].StatusCode)
+		assert.Equal(t, http.StatusNotFound, report.Pages[0].BrokenLinks[1].StatusCode)
+	})
 }

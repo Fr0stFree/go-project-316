@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"code/internal/common/httptools"
 	"code/internal/crawler/htmlparser"
 
 	"github.com/stretchr/testify/require"
@@ -181,7 +182,7 @@ func TestCrawler_HandlePageResult(t *testing.T) {
 
 		crawler.handlePageResult(state, result)
 
-		require.Equal(t, result, state.pages[root.String()])
+		require.Equal(t, result, state.pages[httptools.URLKey(root)])
 		require.Zero(t, state.pending.Len())
 	})
 
@@ -200,7 +201,7 @@ func TestCrawler_HandlePageResult(t *testing.T) {
 
 		crawler.handlePageResult(state, result)
 
-		require.Equal(t, result, state.pages[root.String()])
+		require.Equal(t, result, state.pages[httptools.URLKey(root)])
 		require.Equal(t, 2, state.pending.Len())
 
 		first := state.pending.Front().Value.(task)
@@ -269,7 +270,7 @@ func TestCrawler_HandlePageResult(t *testing.T) {
 
 		crawler.handlePageResult(state, result)
 
-		require.Equal(t, result, state.pages[root.String()])
+		require.Equal(t, result, state.pages[httptools.URLKey(root)])
 		require.Zero(t, state.pending.Len())
 	})
 

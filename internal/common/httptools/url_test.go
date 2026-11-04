@@ -9,6 +9,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func mustParseURL(t *testing.T, rawURL string) *url.URL {
+	t.Helper()
+
+	parsed, err := url.Parse(rawURL)
+	require.NoError(t, err)
+
+	return parsed
+}
+
 func TestIsSameDomain(t *testing.T) {
 	type subTest struct {
 		name     string
@@ -64,11 +73,8 @@ func TestIsSameDomain(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			first, err := url.Parse(test.first)
-			require.NoError(t, err)
-
-			second, err := url.Parse(test.second)
-			require.NoError(t, err)
+			first := mustParseURL(t, test.first)
+			second := mustParseURL(t, test.second)
 
 			actual := httptools.IsSameDomain(first, second)
 
@@ -124,18 +130,23 @@ func TestNormalizeURL(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			original, err := url.Parse(test.input)
-			require.NoError(t, err)
+			original := mustParseURL(t, test.input)
 
 			normalized := httptools.NormalizeURL(original)
 
 			require.Equal(t, test.expected, normalized.String())
-
-			// Normalization must not modify the original URL.
 			require.Equal(t, test.input, original.String())
-
-			// The function must return a new URL instance.
 			require.NotSame(t, original, normalized)
 		})
 	}
+}
+
+func TestURLKey(t *testing.T) {
+	withoutSlash := mustParseURL(t, "https://EXAMPLE.COM?source=one")
+	withSlash := mustParseURL(t, "https://example.com/?source=one")
+	otherQuery := mustParseURL(t, "https://example.com/?source=two")
+
+	require.Equal(t, httptools.URLKey(withoutSlash), httptools.URLKey(withSlash))
+	require.NotEqual(t, httptools.URLKey(withoutSlash), httptools.URLKey(otherQuery))
+	require.Equal(t, "https://EXAMPLE.COM?source=one", withoutSlash.String())
 }

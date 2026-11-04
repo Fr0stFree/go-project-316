@@ -89,7 +89,12 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 		return result
 	}
 
-	html, err := htmlparser.Parse(response.Body, url)
+	documentURL := url
+	if response.Request != nil && response.Request.URL != nil {
+		documentURL = response.Request.URL
+	}
+
+	html, err := htmlparser.Parse(response.Body, documentURL)
 	if err != nil {
 		result.err = err
 		result.status = statusError

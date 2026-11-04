@@ -3,6 +3,8 @@ package crawler
 import (
 	"container/list"
 	"net/url"
+
+	"code/internal/common/httptools"
 )
 
 type crawlerState struct {
@@ -34,12 +36,7 @@ func (s *crawlerState) hasWork() bool {
 }
 
 func (s *crawlerState) markURLSeen(url *url.URL) bool {
-	clonedURL := *url
-	if clonedURL.Path == "" {
-		clonedURL.Path = "/"
-	}
-
-	key := clonedURL.String()
+	key := httptools.URLKey(url)
 
 	if _, exists := s.seenURLs[key]; exists {
 		return false

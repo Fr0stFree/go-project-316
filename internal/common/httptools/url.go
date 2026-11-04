@@ -28,3 +28,13 @@ func NormalizeURL(u *url.URL) *url.URL {
 
 	return &normalized
 }
+
+// URLKey returns the identity used to deduplicate HTTP URLs. An empty path and "/" identify the same resource.
+func URLKey(u *url.URL) string {
+	normalized := NormalizeURL(u)
+	if normalized.Path == "" {
+		normalized.Path = "/"
+	}
+
+	return normalized.String()
+}

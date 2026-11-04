@@ -243,11 +243,11 @@ func (c *Crawler) handleAssetResult(state *crawlerState, result assetTaskResult)
 }
 
 func (c *Crawler) handleLinkResult(state *crawlerState, result linkTaskResult) {
-	state.links[result.url.String()] = result
+	state.links[httptools.URLKey(result.url)] = result
 }
 
 func (c *Crawler) handlePageResult(state *crawlerState, result pageTaskResult) {
-	state.pages[result.url.String()] = result
+	state.pages[httptools.URLKey(result.url)] = result
 
 	if result.html == nil || result.depth >= max(1, c.maxDepth) {
 		return
