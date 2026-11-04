@@ -49,15 +49,30 @@ func Parse(r io.Reader, pageURL *url.URL) (*ParsedHTML, error) {
 		return nil, err
 	}
 
+	baseURL := retrieveDocumentBaseURL(doc, pageURL)
 	page := &ParsedHTML{
-		Links:       findLinks(doc, pageURL),
-		Assets:      slices.Concat(findImages(doc, pageURL), findScripts(doc, pageURL), findStyles(doc, pageURL)),
+		Links:       findLinks(doc, baseURL),
+		Assets:      slices.Concat(findImages(doc, baseURL), findScripts(doc, baseURL), findStyles(doc, baseURL)),
 		Title:       findTitle(doc),
 		Description: findDescription(doc),
 		H1:          findHeader(doc),
 	}
 
 	return page, nil
+}
+
+func retrieveDocumentBaseURL(doc *goquery.Document, pageURL *url.URL) *url.URL {
+	rawBase, exists := doc.Find("base[href]").First().Attr("href")
+	if !exists {
+		return pageURL
+	}
+
+	baseURL, err := resolveURL(strings.TrimSpace(rawBase), pageURL)
+	if err != nil {
+		return pageURL
+	}
+
+	return baseURL
 }
 
 func findLinks(doc *goquery.Document, pageURL *url.URL) []*url.URL {
@@ -163,7 +178,21 @@ func findScripts(doc *goquery.Document, pageURL *url.URL) []Asset {
 func findStyles(doc *goquery.Document, pageURL *url.URL) []Asset {
 	var assets []Asset
 
-	doc.Find(`link[rel~="stylesheet"][href]`).Each(func(_ int, s *goquery.Selection) {
+	doc.Find("link[rel][href]").Each(func(_ int, s *goquery.Selection) {
+		isStylesheet := false
+
+		for _, rel := range strings.Fields(s.AttrOr("rel", "")) {
+			if strings.EqualFold(rel, "stylesheet") {
+				isStylesheet = true
+
+				break
+			}
+		}
+
+		if !isStylesheet {
+			return
+		}
+
 		rawURL, _ := s.Attr("href")
 
 		rawURL = strings.TrimSpace(rawURL)

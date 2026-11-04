@@ -89,94 +89,94 @@ type analyzeFixture struct {
 }
 
 func TestAnalyze(t *testing.T) {
-	const rootURL = "http://example.test"
+	t.Run("should match report fixtures", func(t *testing.T) {
+		const rootURL = "http://example.test"
 
-	fixedTime := time.Date(2024, time.January, 2, 3, 4, 5, 0, time.UTC)
-	fixtures := []analyzeFixture{
-		{
-			name:  "simple",
-			depth: 1,
-			responses: []fixtureResponse{
-				{method: http.MethodGet, path: "/", statusCode: http.StatusOK, bodyFile: "index.html", contentType: "text/html"},
+		fixedTime := time.Date(2024, time.January, 2, 3, 4, 5, 0, time.UTC)
+		fixtures := []analyzeFixture{
+			{
+				name:  "simple",
+				depth: 1,
+				responses: []fixtureResponse{
+					{method: http.MethodGet, path: "/", statusCode: http.StatusOK, bodyFile: "index.html", contentType: "text/html"},
+				},
 			},
-		},
-		{
-			name:  "linked",
-			depth: 2,
-			responses: []fixtureResponse{
-				{method: http.MethodGet, path: "/", statusCode: http.StatusOK, bodyFile: "index.html", contentType: "text/html"},
-				{method: http.MethodGet, path: "/about", statusCode: http.StatusOK, bodyFile: "about.html", contentType: "text/html"},
-				{method: http.MethodGet, path: "/missing", statusCode: http.StatusNotFound},
-				{method: http.MethodHead, path: "/logo.svg", statusCode: http.StatusOK, size: 345, contentType: "image/svg+xml"},
+			{
+				name:  "linked",
+				depth: 2,
+				responses: []fixtureResponse{
+					{method: http.MethodGet, path: "/", statusCode: http.StatusOK, bodyFile: "index.html", contentType: "text/html"},
+					{method: http.MethodGet, path: "/about", statusCode: http.StatusOK, bodyFile: "about.html", contentType: "text/html"},
+					{method: http.MethodGet, path: "/missing", statusCode: http.StatusNotFound},
+					{method: http.MethodHead, path: "/logo.svg", statusCode: http.StatusOK, size: 345, contentType: "image/svg+xml"},
+				},
 			},
-		},
-		{
-			name:  "network-error",
-			depth: 1,
-			responses: []fixtureResponse{
-				{method: http.MethodGet, path: "/", errorText: "network unavailable"},
+			{
+				name:  "network-error",
+				depth: 1,
+				responses: []fixtureResponse{
+					{method: http.MethodGet, path: "/", errorText: "network unavailable"},
+				},
 			},
-		},
-	}
+		}
 
-	for _, fixture := range fixtures {
-		t.Run("should match "+fixture.name+" fixture", func(t *testing.T) {
-			mocks := newAnalyzeMocks(t)
+		for _, fixture := range fixtures {
+			t.Run("should match "+fixture.name+" fixture", func(t *testing.T) {
+				mocks := newAnalyzeMocks(t)
 
-			for _, response := range fixture.responses {
-				if response.errorText != "" {
+				for _, response := range fixture.responses {
+					if response.errorText != "" {
+						mocks.transport.
+							On("RoundTrip", response.method, "example.test", response.path).
+							Return((*http.Response)(nil), errors.New(response.errorText)).
+							Once()
+
+						continue
+					}
+
+					body := ""
+
+					if response.bodyFile != "" {
+						content, err := os.ReadFile(filepath.Join("testdata", fixture.name, response.bodyFile))
+						require.NoError(t, err)
+
+						body = string(content)
+					}
+
+					size := int64(len(body))
+					if response.size > 0 {
+						size = response.size
+					}
+
 					mocks.transport.
 						On("RoundTrip", response.method, "example.test", response.path).
-						Return((*http.Response)(nil), errors.New(response.errorText)).
+						Return(newHTTPResponse(response.statusCode, body, size, response.contentType), nil).
 						Once()
-
-					continue
 				}
 
-				body := ""
+				data, err := crawler.Analyze(t.Context(), crawler.Options{
+					URL:        rootURL,
+					Depth:      fixture.depth,
+					Timeout:    time.Second,
+					HTTPClient: mocks.client,
+					Now:        func() time.Time { return fixedTime },
+				})
+				require.NoError(t, err)
 
-				if response.bodyFile != "" {
-					content, err := os.ReadFile(filepath.Join("testdata", fixture.name, response.bodyFile))
-					require.NoError(t, err)
+				expectedData, err := os.ReadFile(filepath.Join("testdata", fixture.name, "expected.json"))
+				require.NoError(t, err)
 
-					body = string(content)
-				}
+				var expected map[string]any
+				require.NoError(t, json.Unmarshal(expectedData, &expected))
 
-				size := int64(len(body))
-				if response.size > 0 {
-					size = response.size
-				}
+				var actual map[string]any
+				require.NoError(t, json.Unmarshal(data, &actual))
 
-				mocks.transport.
-					On("RoundTrip", response.method, "example.test", response.path).
-					Return(newHTTPResponse(response.statusCode, body, size, response.contentType), nil).
-					Once()
-			}
-
-			data, err := crawler.Analyze(t.Context(), crawler.Options{
-				URL:        rootURL,
-				Depth:      fixture.depth,
-				Timeout:    time.Second,
-				HTTPClient: mocks.client,
-				Now:        func() time.Time { return fixedTime },
+				assert.Equal(t, expected, actual)
 			})
-			require.NoError(t, err)
+		}
+	})
 
-			expectedData, err := os.ReadFile(filepath.Join("testdata", fixture.name, "expected.json"))
-			require.NoError(t, err)
-
-			var expected map[string]any
-			require.NoError(t, json.Unmarshal(expectedData, &expected))
-
-			var actual map[string]any
-			require.NoError(t, json.Unmarshal(data, &actual))
-
-			assert.Equal(t, expected, actual)
-		})
-	}
-}
-
-func TestAnalyzeRedirectedPage(t *testing.T) {
 	t.Run("should resolve links and assets against the final document URL", func(t *testing.T) {
 		mocks := newAnalyzeMocks(t)
 		redirect := newHTTPResponse(http.StatusFound, "", 0, "")
@@ -210,9 +210,7 @@ func TestAnalyzeRedirectedPage(t *testing.T) {
 		assert.Equal(t, "http://example.test/new/logo.png", report.Pages[0].Assets[0].URL)
 		assert.Equal(t, 42, report.Pages[0].Assets[0].SizeBytes)
 	})
-}
 
-func TestAnalyzeEquivalentExternalLinks(t *testing.T) {
 	t.Run("should check one resource and report both link spellings", func(t *testing.T) {
 		mocks := newAnalyzeMocks(t)
 		mocks.transport.On("RoundTrip", http.MethodGet, "example.test", "/").
@@ -240,5 +238,58 @@ func TestAnalyzeEquivalentExternalLinks(t *testing.T) {
 		assert.Equal(t, "http://other.test/", report.Pages[0].BrokenLinks[1].URL)
 		assert.Equal(t, http.StatusNotFound, report.Pages[0].BrokenLinks[0].StatusCode)
 		assert.Equal(t, http.StatusNotFound, report.Pages[0].BrokenLinks[1].StatusCode)
+	})
+
+	t.Run("should report SEO fields", func(t *testing.T) {
+		tests := []struct {
+			name           string
+			html           string
+			hasTitle       bool
+			title          string
+			hasDescription bool
+			description    string
+			hasH1          bool
+		}{
+			{
+				name: "should report missing SEO tags",
+				html: `<html><body>Plain page</body></html>`,
+			},
+			{
+				name:           "should decode HTML entities in SEO text",
+				html:           `<html><head><title>Fish &amp; Chips</title><meta name="description" content="Bread &amp; butter"></head><body><h1>Menu</h1></body></html>`,
+				hasTitle:       true,
+				title:          "Fish & Chips",
+				hasDescription: true,
+				description:    "Bread & butter",
+				hasH1:          true,
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				mocks := newAnalyzeMocks(t)
+				mocks.transport.On("RoundTrip", http.MethodGet, "example.test", "/").
+					Return(newHTTPResponse(http.StatusOK, test.html, int64(len(test.html)), "text/html"), nil).
+					Once()
+
+				data, err := crawler.Analyze(t.Context(), crawler.Options{
+					URL:        "http://example.test",
+					Depth:      1,
+					HTTPClient: mocks.client,
+				})
+				require.NoError(t, err)
+
+				var report crawler.Report
+				require.NoError(t, json.Unmarshal(data, &report))
+				require.Len(t, report.Pages, 1)
+
+				seo := report.Pages[0].SEO
+				assert.Equal(t, test.hasTitle, seo.HasTitle)
+				assert.Equal(t, test.title, seo.Title)
+				assert.Equal(t, test.hasDescription, seo.HasDescription)
+				assert.Equal(t, test.description, seo.Description)
+				assert.Equal(t, test.hasH1, seo.HasH1)
+			})
+		}
 	})
 }
