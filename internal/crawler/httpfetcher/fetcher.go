@@ -148,7 +148,7 @@ func (h *Fetcher) waitBeforeRetry(ctx context.Context) error {
 }
 
 func (h *Fetcher) doRequest(ctx context.Context, url *url.URL, method string) (*http.Response, error) {
-	slog.Debug("Making HTTP request", "url", url.String())
+	slog.Debug("Making HTTP request", "url", url.Redacted())
 
 	request, err := http.NewRequestWithContext(
 		ctx,
