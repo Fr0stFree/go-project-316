@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"code/internal/crawler/htmlparser"
@@ -92,5 +93,36 @@ func TestParse(t *testing.T) {
 		require.Equal(t, "https://example.com/assets/main.css", result.Assets[2].URL.String())
 		require.Equal(t, htmlparser.AssetStyle, result.Assets[3].Type)
 		require.Equal(t, "https://example.com/assets/other.css", result.Assets[3].URL.String())
+	})
+
+	t.Run("should skip fragment without base", func(t *testing.T) {
+		html := `<a href="#part">Section</a>`
+
+		result, err := htmlparser.Parse(strings.NewReader(html), prepareURL(t))
+		require.NoError(t, err)
+		require.Empty(t, result.Links)
+	})
+
+	t.Run("should skip fragment when base points to current page", func(t *testing.T) {
+		html := `
+			<base href="/pages/home">
+			<a href="#part">Section</a>
+		`
+
+		result, err := htmlparser.Parse(strings.NewReader(html), prepareURL(t))
+		require.NoError(t, err)
+		require.Empty(t, result.Links)
+	})
+
+	t.Run("should include fragment when base points to another page", func(t *testing.T) {
+		html := `
+			<base href="/guide/">
+			<a href="#part">Section</a>
+		`
+
+		result, err := htmlparser.Parse(strings.NewReader(html), prepareURL(t))
+		require.NoError(t, err)
+		require.Len(t, result.Links, 1)
+		require.Equal(t, "https://example.com/guide/", result.Links[0].String())
 	})
 }

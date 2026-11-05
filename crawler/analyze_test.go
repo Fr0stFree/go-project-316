@@ -510,7 +510,7 @@ func TestAnalyze(t *testing.T) {
 
 		select {
 		case outcome := <-result:
-			require.NoError(t, outcome.err)
+			require.ErrorIs(t, context.Canceled, outcome.err)
 
 			var report crawler.Report
 			require.NoError(t, json.Unmarshal(outcome.data, &report))

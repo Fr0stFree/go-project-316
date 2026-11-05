@@ -51,7 +51,7 @@ func Parse(r io.Reader, pageURL *url.URL) (*ParsedHTML, error) {
 
 	baseURL := retrieveDocumentBaseURL(doc, pageURL)
 	page := &ParsedHTML{
-		Links:       findLinks(doc, baseURL),
+		Links:       findLinks(doc, pageURL, baseURL),
 		Assets:      slices.Concat(findImages(doc, baseURL), findScripts(doc, baseURL), findStyles(doc, baseURL)),
 		Title:       findTitle(doc),
 		Description: findDescription(doc),
@@ -75,19 +75,23 @@ func retrieveDocumentBaseURL(doc *goquery.Document, pageURL *url.URL) *url.URL {
 	return baseURL
 }
 
-func findLinks(doc *goquery.Document, pageURL *url.URL) []*url.URL {
+func findLinks(doc *goquery.Document, pageURL, baseURL *url.URL) []*url.URL {
 	links := make([]*url.URL, 0)
 
-	doc.Find("a[href]").Each(func(_ int, s *goquery.Selection) {
-		rawURL, _ := s.Attr("href")
+	normalizedPageURL := httptools.NormalizeURL(pageURL)
 
-		rawURL = strings.TrimSpace(rawURL)
-		if rawURL == "" || strings.HasPrefix(rawURL, "#") {
+	doc.Find("a[href]").Each(func(_ int, s *goquery.Selection) {
+		rawURL := strings.TrimSpace(s.AttrOr("href", ""))
+		if rawURL == "" {
 			return
 		}
 
-		absoluteURL, err := resolveURL(rawURL, pageURL)
+		absoluteURL, err := resolveURL(rawURL, baseURL)
 		if err != nil {
+			return
+		}
+
+		if strings.HasPrefix(rawURL, "#") && absoluteURL.String() == normalizedPageURL.String() {
 			return
 		}
 
