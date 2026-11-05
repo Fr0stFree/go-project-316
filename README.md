@@ -100,6 +100,8 @@ The top level contains `root_url`, the requested `depth`, a UTC `generated_at` t
 
 HTTP errors and failed requests to valid HTTP(S) URLs are recorded in the report. Invalid root URLs cause the CLI to exit with a nonzero status and write the error to standard error.
 
+If crawling is interrupted by context cancellation (for example, by pressing Ctrl+C), the CLI writes a valid partial JSON report to standard output and exits with status code `1`. A successful crawl exits with status code `0`.
+
 This example shows a page with a broken link and an image asset, followed by the linked pages:
 
 ```json

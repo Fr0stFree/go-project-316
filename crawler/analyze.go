@@ -55,12 +55,17 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 		return nil, err
 	}
 
-	crawlResults, err := crawl.Run(ctx, opts.URL)
-	if err != nil && !errors.Is(err, context.Canceled) {
+	crawlResults, crawlErr := crawl.Run(ctx, opts.URL)
+	if crawlErr != nil && !errors.Is(crawlErr, context.Canceled) {
+		return nil, crawlErr
+	}
+
+	result := report.Build(opts.URL, opts.Depth, crawlResults, timeutils.UTCTruncatedToSeconds(now))
+
+	data, err := fmttools.ToJSON(result, opts.IndentJSON)
+	if err != nil {
 		return nil, err
 	}
 
-	report := report.Build(opts.URL, opts.Depth, crawlResults, timeutils.UTCTruncatedToSeconds(now))
-
-	return fmttools.ToJSON(report, opts.IndentJSON)
+	return data, crawlErr
 }
