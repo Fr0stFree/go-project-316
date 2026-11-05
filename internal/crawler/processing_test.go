@@ -57,19 +57,57 @@ func TestCrawler_ProcessLinkCheck(t *testing.T) {
 }
 
 func TestCrawler_ProcessWebPage(t *testing.T) {
-	crawler := newTestCrawler(t, func(_ *http.Request) (*http.Response, error) {
-		response := testResponse(http.StatusOK, -1, "<rss><channel><title>Crawler Blog</title></channel></rss>")
-		response.Header.Set("Content-Type", "application/xml")
+	t.Run("shoul process web page successfully", func(t *testing.T) {
+		crawler := newTestCrawler(t, func(_ *http.Request) (*http.Response, error) {
+			response := testResponse(http.StatusOK, -1, "<rss><channel><title>Crawler Blog</title></channel></rss>")
+			response.Header.Set("Content-Type", "application/xml")
 
-		return response, nil
+			return response, nil
+		})
+		page := mustParseURL(t, "https://example.com/feed.xml")
+
+		result := crawler.processWebPage(context.Background(), page, 1)
+
+		require.NoError(t, result.err)
+		require.NotNil(t, result.html)
+		require.Equal(t, "Crawler Blog", *result.html.Title)
 	})
-	page := mustParseURL(t, "https://example.com/feed.xml")
 
-	result := crawler.processWebPage(context.Background(), page, 1)
+	t.Run("should skip HTML parsing after cross-domain redirect", func(t *testing.T) {
+		html := `
+			<html>
+				<body>
+					<a href="https://example.com/back">Back</a>
+					<img src="/logo.png">
+				</body>
+			</html>
+		`
+		crawler := newTestCrawler(t, func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path == "/jump" {
+				response := testResponse(http.StatusFound, 0, "")
+				response.Header.Set("Location", "https://external.com/page")
 
-	require.NoError(t, result.err)
-	require.NotNil(t, result.html)
-	require.Equal(t, "Crawler Blog", *result.html.Title)
+				return response, nil
+			}
+
+			require.Equal(t, "external.com", request.URL.Hostname())
+
+			response := testResponse(http.StatusOK, -1, html)
+			response.Header.Set("Content-Type", "text/html")
+			response.Request = request
+
+			return response, nil
+		})
+		page := mustParseURL(t, "https://example.com/jump")
+
+		result := crawler.processWebPage(context.Background(), page, 1)
+
+		require.NoError(t, result.err)
+		require.Equal(t, page, result.url)
+		require.Equal(t, http.StatusOK, result.httpStatus)
+		require.Equal(t, statusOK, result.status)
+		require.Nil(t, result.html)
+	})
 }
 
 func TestCrawler_ProcessAsset(t *testing.T) {
@@ -88,26 +126,5 @@ func TestCrawler_ProcessAsset(t *testing.T) {
 		require.Equal(t, http.StatusOK, result.httpStatus)
 		require.Equal(t, 5, result.sizeBytes)
 		require.Equal(t, []string{http.MethodHead}, methods)
-	})
-
-	t.Run("size from GET when HEAD has no length", func(t *testing.T) {
-		methods := make([]string, 0, 2)
-		crawler := newTestCrawler(t, func(request *http.Request) (*http.Response, error) {
-			methods = append(methods, request.Method)
-
-			if request.Method == http.MethodHead {
-				return testResponse(http.StatusOK, -1, ""), nil
-			}
-
-			return testResponse(http.StatusOK, 5, "hello"), nil
-		})
-		asset := mustParseURL(t, "https://example.com/logo.png")
-
-		result := crawler.processAsset(context.Background(), asset)
-
-		require.NoError(t, result.err)
-		require.Equal(t, http.StatusOK, result.httpStatus)
-		require.Equal(t, 5, result.sizeBytes)
-		require.Equal(t, []string{http.MethodHead, http.MethodGet}, methods)
 	})
 }

@@ -78,6 +78,22 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 		result.status = statusError
 	}
 
+	documentURL := url
+	if response.Request != nil && response.Request.URL != nil {
+		documentURL = response.Request.URL
+	}
+
+	if !httptools.IsSameDomain(url, documentURL) {
+		slog.DebugContext(
+			ctx,
+			"Skipping page parsing after cross-domain redirect",
+			"url", url.String(),
+			"redirect_url", documentURL.String(),
+		)
+
+		return result
+	}
+
 	if !httptools.IsMarkupResponse(response) {
 		slog.DebugContext(
 			ctx,
@@ -87,11 +103,6 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 		)
 
 		return result
-	}
-
-	documentURL := url
-	if response.Request != nil && response.Request.URL != nil {
-		documentURL = response.Request.URL
 	}
 
 	html, err := htmlparser.Parse(response.Body, documentURL)
