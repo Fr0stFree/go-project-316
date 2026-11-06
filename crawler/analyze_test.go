@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -521,5 +522,81 @@ func TestAnalyze(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("Analyze did not return after cancellation")
 		}
+	})
+
+	t.Run("should enforce RPS limit across workers", func(t *testing.T) {
+		var (
+			mu           sync.Mutex
+			requestTimes []time.Time
+		)
+
+		client := &http.Client{
+			Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+				mu.Lock()
+
+				requestTimes = append(requestTimes, time.Now())
+				mu.Unlock()
+
+				if request.URL.Path == "" {
+					return newHTTPResponse(
+						http.StatusOK,
+						`<img src="/a.png"><img src="/b.png">`,
+						0,
+						"text/html",
+					), nil
+				}
+
+				return newHTTPResponse(http.StatusOK, "", 100, "image/png"), nil
+			}),
+		}
+
+		_, err := crawler.Analyze(t.Context(), crawler.Options{
+			URL:         "http://example.test",
+			Depth:       1,
+			RPS:         2,
+			Concurrency: 3,
+			HTTPClient:  client,
+		})
+		require.NoError(t, err)
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		require.Len(t, requestTimes, 3)
+		assert.GreaterOrEqual(t, requestTimes[2].Sub(requestTimes[0]), 900*time.Millisecond)
+	})
+
+	t.Run("should check links at depth boundary without crawling them", func(t *testing.T) {
+		mocks := newAnalyzeMocks(t)
+
+		mocks.transport.On("RoundTrip", http.MethodGet, "example.test", "/").
+			Return(newHTTPResponse(
+				http.StatusOK,
+				`<a href="/missing">Missing</a>`,
+				0,
+				"text/html",
+			), nil).
+			Once()
+
+		mocks.transport.On("RoundTrip", http.MethodHead, "example.test", "/missing").
+			Return(newHTTPResponse(http.StatusNotFound, "", 0, ""), nil).
+			Once()
+
+		data, err := crawler.Analyze(t.Context(), crawler.Options{
+			URL:        "http://example.test",
+			Depth:      1,
+			HTTPClient: mocks.client,
+		})
+		require.NoError(t, err)
+
+		var report crawler.Report
+		require.NoError(t, json.Unmarshal(data, &report))
+
+		require.Len(t, report.Pages, 1)
+		assert.Equal(t, "http://example.test", report.Pages[0].URL)
+
+		require.Len(t, report.Pages[0].BrokenLinks, 1)
+		assert.Equal(t, "http://example.test/missing", report.Pages[0].BrokenLinks[0].URL)
+		assert.Equal(t, http.StatusNotFound, report.Pages[0].BrokenLinks[0].StatusCode)
 	})
 }
