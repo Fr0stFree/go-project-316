@@ -57,7 +57,7 @@ func TestCrawler_ProcessLinkCheck(t *testing.T) {
 }
 
 func TestCrawler_ProcessWebPage(t *testing.T) {
-	t.Run("shoul process web page successfully", func(t *testing.T) {
+	t.Run("should process web page successfully", func(t *testing.T) {
 		crawler := newTestCrawler(t, func(_ *http.Request) (*http.Response, error) {
 			response := testResponse(http.StatusOK, -1, "<rss><channel><title>Crawler Blog</title></channel></rss>")
 			response.Header.Set("Content-Type", "application/xml")

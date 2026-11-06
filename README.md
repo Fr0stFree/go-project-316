@@ -69,7 +69,7 @@ Set the crawl depth and request limits with flags before the URL:
 go run ./cmd/hexlet-go-crawler --depth 2 --retries 2 --delay 200ms --timeout 10s https://example.com
 ```
 
-`--depth 1` includes only the starting page in `pages`; its links are still checked for failures. The default depth is `10`. `--retries N` allows one initial request and up to N additional attempts for temporary failures such as 429, 5xx, or retryable network errors. The default is `1`, so temporary failures get one additional attempt.
+`--depth 1` includes only the starting page in `pages`; its links are still checked for failures. The default depth is `10`. `--retries N` allows one initial request and up to N additional attempts for temporary failures such as 429, 5xx, or retryable network errors. The default is `1`, so temporary failures get one additional attempt. Each retry includes a fixed one-second wait, independent of the `--delay` and `--rps` settings.
 
 Links on the starting URL's hostname are followed until the depth limit. At the limit, and for links on other hostnames, the crawler checks the target with `HEAD` but does not add it to `pages`. If the server rejects `HEAD` with 405 or 501, the crawler tries `GET`. A failed check appears in the referring page's `broken_links`. Referenced assets can be fetched from other hosts; when `HEAD` is unsupported or does not provide a size, the crawler uses `GET` to measure the response body.
 
@@ -96,11 +96,11 @@ Run `./bin/crawler --help` for the complete CLI help.
 
 ## JSON Report
 
-The top level contains `root_url`, the requested `depth`, a UTC `generated_at` timestamp, and a URL-sorted `pages` array. Each page includes its URL, depth, HTTP status, `ok` or `error` state, discovery time, SEO fields, broken links, and assets. An empty `error` is omitted from pages, links, and assets; a broken link without an HTTP response also omits `status_code`. An HTTP 404 page can have `status: "error"` without an `error` message. Empty `broken_links` and `assets` are `[]` after a completed page request and `null` when the page request itself fails.
+The top level contains `root_url`, the requested `depth`, a UTC `generated_at` timestamp, and a URL-sorted `pages` array. Each page includes its URL, depth, HTTP status, `ok` or `error` state, discovery time, SEO fields, broken links, and assets. Empty `error` fields are omitted from pages, links, and assets. The `status_code` field is always present for broken links and assets, with a value of `0` when no HTTP response is received. An HTTP 404 page can have `status: "error"` without an `error` message. Empty `broken_links` and `assets` are represented as `[]` after a completed page request and `null` when the request fails.
 
 HTTP errors and failed requests to valid HTTP(S) URLs are recorded in the report. Invalid root URLs cause the CLI to exit with a nonzero status and write the error to standard error.
 
-If crawling is interrupted by context cancellation (for example, by pressing Ctrl+C), the CLI writes a valid partial JSON report to standard output and exits with status code `1`. A successful crawl exits with status code `0`.
+If crawling is interrupted by context cancellation (for example, by pressing Ctrl+C), the CLI writes a valid partial JSON report to standard output and exits with status code `1`. A successful crawl exits with status code `0`. The `Analyze` function also preserves partial results by returning the generated JSON alongside context.Canceled.
 
 This example shows a page with a broken link and an image asset, followed by the linked pages:
 
