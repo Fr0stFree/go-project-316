@@ -110,7 +110,57 @@ func TestCrawler_ProcessWebPage(t *testing.T) {
 	})
 }
 
+type interruptedBody struct{}
+
+func (interruptedBody) Read([]byte) (int, error) {
+	return 0, io.ErrUnexpectedEOF
+}
+
+func (interruptedBody) Close() error {
+	return nil
+}
+
 func TestCrawler_ProcessAsset(t *testing.T) {
+	t.Run("should retry interrupted GET body", func(t *testing.T) {
+		methods := make([]string, 0, 3)
+		getAttempts := 0
+
+		crawler := newTestCrawler(t, func(request *http.Request) (*http.Response, error) {
+			methods = append(methods, request.Method)
+
+			if request.Method == http.MethodHead {
+				return testResponse(http.StatusOK, -1, ""), nil
+			}
+
+			getAttempts++
+
+			if getAttempts == 1 {
+				response := testResponse(http.StatusOK, -1, "")
+				response.Body = interruptedBody{}
+
+				return response, nil
+			}
+
+			return testResponse(http.StatusOK, 5, "hello"), nil
+		})
+
+		require.NoError(t, crawler.fetcher.SetRetries(1))
+		require.NoError(t, crawler.fetcher.SetRetryDelay(0))
+
+		asset := mustParseURL(t, "https://example.com/image.png")
+
+		result := crawler.processAsset(context.Background(), asset)
+
+		require.NoError(t, result.err)
+		require.Equal(t, http.StatusOK, result.httpStatus)
+		require.Equal(t, 5, result.sizeBytes)
+		require.Equal(t, []string{
+			http.MethodHead,
+			http.MethodGet,
+			http.MethodGet,
+		}, methods)
+	})
+
 	t.Run("size from HEAD", func(t *testing.T) {
 		methods := make([]string, 0, 1)
 		crawler := newTestCrawler(t, func(request *http.Request) (*http.Response, error) {

@@ -158,3 +158,102 @@ func TestFetch(t *testing.T) {
 		require.Equal(t, 2, requestsMade)
 	})
 }
+
+type interruptedBody struct{}
+
+func (interruptedBody) Read([]byte) (int, error) {
+	return 0, io.ErrUnexpectedEOF
+}
+
+func (interruptedBody) Close() error {
+	return nil
+}
+
+func TestFetchSize(t *testing.T) {
+	t.Run("successful fetch", func(t *testing.T) {
+		requestsMade := 0
+
+		fetcher := newTestFetcher(t, func(req *http.Request) (*http.Response, error) {
+			requestsMade++
+
+			require.Equal(t, http.MethodGet, req.Method)
+
+			return testResponse(http.StatusOK), nil
+		})
+
+		status, size, err := fetcher.FetchSize(context.Background(), prepareURL(t))
+
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, status)
+		require.Equal(t, int64(len("test response")), size)
+		require.Equal(t, 1, requestsMade)
+	})
+
+	t.Run("retry interrupted body", func(t *testing.T) {
+		requestsMade := 0
+
+		fetcher := newTestFetcher(t, func(_ *http.Request) (*http.Response, error) {
+			requestsMade++
+
+			if requestsMade == 1 {
+				response := testResponse(http.StatusOK)
+				response.Body = interruptedBody{}
+
+				return response, nil
+			}
+
+			return testResponse(http.StatusOK), nil
+		})
+		require.NoError(t, fetcher.SetRetries(1))
+
+		status, size, err := fetcher.FetchSize(context.Background(), prepareURL(t))
+
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, status)
+		require.Equal(t, int64(len("test response")), size)
+		require.Equal(t, 2, requestsMade)
+	})
+
+	t.Run("retry budget exhausted", func(t *testing.T) {
+		requestsMade := 0
+
+		fetcher := newTestFetcher(t, func(_ *http.Request) (*http.Response, error) {
+			requestsMade++
+
+			response := testResponse(http.StatusOK)
+			response.Body = interruptedBody{}
+
+			return response, nil
+		})
+		require.NoError(t, fetcher.SetRetries(1))
+
+		status, size, err := fetcher.FetchSize(context.Background(), prepareURL(t))
+
+		require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+		require.Equal(t, http.StatusOK, status)
+		require.Zero(t, size)
+		require.Equal(t, 2, requestsMade)
+	})
+
+	t.Run("retry server error", func(t *testing.T) {
+		requestsMade := 0
+
+		fetcher := newTestFetcher(t, func(_ *http.Request) (*http.Response, error) {
+			requestsMade++
+
+			if requestsMade == 1 {
+				return testResponse(http.StatusInternalServerError), nil
+			}
+
+			return testResponse(http.StatusOK), nil
+		})
+		require.NoError(t, fetcher.SetRetries(1))
+
+		status, size, err := fetcher.FetchSize(context.Background(), prepareURL(t))
+
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, status)
+		require.Equal(t, int64(len("test response")), size)
+		require.Equal(t, 2, requestsMade)
+	})
+}

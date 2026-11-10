@@ -4,6 +4,7 @@ package httpfetcher
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -132,6 +133,57 @@ func (h *Fetcher) Fetch(ctx context.Context, url *url.URL, method string) (*http
 		if response != nil {
 			_ = response.Body.Close()
 		}
+	}
+}
+
+// FetchSize fetches a resource and measures its body size.
+func (h *Fetcher) FetchSize(ctx context.Context, u *url.URL) (int, int64, error) {
+	for attempt := 0; ; attempt++ {
+		if attempt > 0 {
+			if err := h.waitBeforeRetry(ctx); err != nil {
+				return 0, 0, err
+			}
+		}
+
+		response, err := h.doRequest(ctx, u, http.MethodGet)
+
+		if h.shouldRetry(ctx, response, err, attempt) {
+			if response != nil {
+				_ = response.Body.Close()
+			}
+
+			continue
+		}
+
+		if err != nil {
+			if response != nil {
+				_ = response.Body.Close()
+			}
+
+			return 0, 0, err
+		}
+
+		status := response.StatusCode
+
+		if status >= http.StatusBadRequest {
+			_ = response.Body.Close()
+
+			return status, 0, nil
+		}
+
+		size, readErr := io.Copy(io.Discard, response.Body)
+		_ = response.Body.Close()
+
+		if readErr == nil {
+			return status, size, nil
+		}
+
+		isRetryable := errors.Is(readErr, io.ErrUnexpectedEOF) || httptools.IsRetryableError(readErr)
+		if isRetryable && attempt < h.maxRetries && ctx.Err() == nil {
+			continue
+		}
+
+		return status, 0, readErr
 	}
 }
 

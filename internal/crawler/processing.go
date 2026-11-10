@@ -3,7 +3,6 @@ package crawler
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -159,11 +158,10 @@ func (c *Crawler) processLinkCheck(ctx context.Context, url *url.URL, depth int)
 
 func (c *Crawler) processAsset(ctx context.Context, assetURL *url.URL) assetTaskResult {
 	result := assetTaskResult{url: assetURL}
-	method := http.MethodHead
 
-	slog.DebugContext(ctx, "Processing asset", "url", httptools.SanitizeURL(assetURL), "method", method)
+	slog.DebugContext(ctx, "Processing asset", "url", httptools.SanitizeURL(assetURL), "method", http.MethodHead)
 
-	response, err := c.fetcher.Fetch(ctx, assetURL, method)
+	response, err := c.fetcher.Fetch(ctx, assetURL, http.MethodHead)
 	if err != nil {
 		result.err = err
 
@@ -171,43 +169,48 @@ func (c *Crawler) processAsset(ctx context.Context, assetURL *url.URL) assetTask
 	}
 
 	isSizeUnknown := response.StatusCode < http.StatusBadRequest && response.ContentLength < 0
+
 	if !httptools.IsMethodSupported(response.StatusCode) || isSizeUnknown {
 		_ = response.Body.Close()
-		method = http.MethodGet
 
-		slog.DebugContext(ctx, "Processing asset", "url", httptools.SanitizeURL(assetURL), "method", method)
+		slog.DebugContext(
+			ctx,
+			"Processing asset",
+			"url", httptools.SanitizeURL(assetURL),
+			"method", http.MethodGet,
+		)
 
-		response, err = c.fetcher.Fetch(ctx, assetURL, method)
+		status, size, err := c.fetcher.FetchSize(ctx, assetURL)
+		result.httpStatus = status
+
 		if err != nil {
-			result.err = err
+			result.err = fmt.Errorf("failed to measure asset size: %w", err)
 
 			return result
 		}
+
+		if status >= http.StatusBadRequest {
+			result.err = fmt.Errorf("unexpected HTTP status: %d", status)
+
+			return result
+		}
+
+		result.sizeBytes = int(size)
+
+		return result
 	}
 
 	defer func() { _ = response.Body.Close() }()
 
 	result.httpStatus = response.StatusCode
+
 	if response.StatusCode >= http.StatusBadRequest {
 		result.err = fmt.Errorf("unexpected HTTP status: %d", response.StatusCode)
 
 		return result
 	}
 
-	if method == http.MethodHead {
-		result.sizeBytes = int(response.ContentLength)
-
-		return result
-	}
-
-	size, err := io.Copy(io.Discard, response.Body)
-	if err != nil {
-		result.err = fmt.Errorf("failed to measure asset size: %w", err)
-
-		return result
-	}
-
-	result.sizeBytes = int(size)
+	result.sizeBytes = int(response.ContentLength)
 
 	return result
 }
