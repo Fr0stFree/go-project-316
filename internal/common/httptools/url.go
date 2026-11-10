@@ -4,6 +4,8 @@ package httptools
 import (
 	"net/url"
 	"strings"
+
+	"golang.org/x/net/idna"
 )
 
 const (
@@ -16,7 +18,18 @@ const (
 
 // IsSameDomain checks if two URLs have the same domain.
 func IsSameDomain(url1, url2 *url.URL) bool {
-	return strings.EqualFold(url1.Hostname(), url2.Hostname())
+	if url1 == nil || url2 == nil {
+		return false
+	}
+
+	host1, err1 := idna.Lookup.ToASCII(url1.Hostname())
+
+	host2, err2 := idna.Lookup.ToASCII(url2.Hostname())
+	if err1 != nil || err2 != nil {
+		return false
+	}
+
+	return strings.EqualFold(host1, host2)
 }
 
 // NormalizeURL returns a normalized copy without changing the original.

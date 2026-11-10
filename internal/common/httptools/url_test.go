@@ -69,6 +69,12 @@ func TestIsSameDomain(t *testing.T) {
 			second:   "https://example.com/b?y=2",
 			expected: true,
 		},
+		{
+			name:     "Unicode and Punycode domains",
+			first:    "bücher.example",
+			second:   "xn--bcher-kva.example",
+			expected: true,
+		},
 	}
 
 	for _, test := range tests {
