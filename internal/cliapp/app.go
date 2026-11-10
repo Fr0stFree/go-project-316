@@ -137,6 +137,6 @@ func New() *cli.Command {
 		ArgValidator: cliArgsValidator,
 		Flags:        cliFlags,
 		Action:       cliAction,
-		UsageText:    "hexlet-go-crawler [global options] command [command options] <url>",
+		UsageText:    "hexlet-go-crawler [options] <url>",
 	}
 }
