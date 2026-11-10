@@ -1,7 +1,9 @@
 package httptools_test
 
 import (
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"code/internal/common/httptools"
@@ -124,4 +126,42 @@ func TestIsMarkupResponse(t *testing.T) {
 			require.Equal(t, test.expected, actual)
 		})
 	}
+}
+
+func TestDecodeMarkupResponse(t *testing.T) {
+	t.Run("should decode ISO-8859-1 HTML", func(t *testing.T) {
+		response := &http.Response{
+			Header: http.Header{
+				"Content-Type": {"text/html; charset=iso-8859-1"},
+			},
+			Body: io.NopCloser(strings.NewReader("Caf\xe9")),
+		}
+		defer func() { _ = response.Body.Close() }()
+
+		reader, err := httptools.DecodeMarkupResponse(response)
+		require.NoError(t, err)
+
+		data, err := io.ReadAll(reader)
+		require.NoError(t, err)
+		require.Equal(t, "Café", string(data))
+	})
+
+	t.Run("should leave XML unchanged", func(t *testing.T) {
+		body := "<rss><title>Example</title></rss>"
+
+		response := &http.Response{
+			Header: http.Header{
+				"Content-Type": {"application/xml"},
+			},
+			Body: io.NopCloser(strings.NewReader(body)),
+		}
+		defer func() { _ = response.Body.Close() }()
+
+		reader, err := httptools.DecodeMarkupResponse(response)
+		require.NoError(t, err)
+
+		data, err := io.ReadAll(reader)
+		require.NoError(t, err)
+		require.Equal(t, body, string(data))
+	})
 }

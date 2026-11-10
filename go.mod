@@ -10,7 +10,7 @@ require (
 require (
 	github.com/PuerkitoBio/goquery v1.13.0
 	github.com/samber/lo v1.53.0
-	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/net v0.59.0
 )
 
 require (
