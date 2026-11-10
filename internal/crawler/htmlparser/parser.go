@@ -2,6 +2,7 @@
 package htmlparser
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 	"code/internal/common/stringtools"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/antchfx/xmlquery"
 	"github.com/samber/lo"
 )
 
@@ -43,22 +45,39 @@ type ParsedHTML struct {
 }
 
 // Parse reads an HTML document and extracts links and SEO metadata.
-func Parse(r io.Reader, pageURL *url.URL) (*ParsedHTML, error) {
+func Parse(r io.Reader, pageURL *url.URL, parseRSS bool) (*ParsedHTML, error) {
+	var data []byte
+
+	if parseRSS {
+		var err error
+
+		data, err = io.ReadAll(r)
+		if err != nil {
+			return nil, err
+		}
+
+		r = bytes.NewReader(data)
+	}
+
 	doc, err := goquery.NewDocumentFromReader(r)
 	if err != nil {
 		return nil, err
 	}
 
 	baseURL := retrieveDocumentBaseURL(doc, pageURL)
-	page := &ParsedHTML{
-		Links:       findLinks(doc, pageURL, baseURL),
+	links := findLinks(doc, pageURL, baseURL)
+
+	if parseRSS {
+		links = append(links, findRSSLinks(data, pageURL)...)
+	}
+
+	return &ParsedHTML{
+		Links:       links,
 		Assets:      slices.Concat(findImages(doc, baseURL), findScripts(doc, baseURL), findStyles(doc, baseURL)),
 		Title:       findTitle(doc),
 		Description: findDescription(doc),
 		H1:          findHeader(doc),
-	}
-
-	return page, nil
+	}, nil
 }
 
 func retrieveDocumentBaseURL(doc *goquery.Document, pageURL *url.URL) *url.URL {
@@ -97,6 +116,26 @@ func findLinks(doc *goquery.Document, pageURL, baseURL *url.URL) []*url.URL {
 
 		links = append(links, absoluteURL)
 	})
+
+	return links
+}
+
+func findRSSLinks(data []byte, pageURL *url.URL) []*url.URL {
+	links := make([]*url.URL, 0)
+
+	doc, err := xmlquery.Parse(bytes.NewReader(data))
+	if err != nil {
+		return links
+	}
+
+	for _, node := range xmlquery.Find(doc, "//rss/channel/link | //rss/channel/item/link") {
+		absoluteURL, err := resolveURL(strings.TrimSpace(node.InnerText()), pageURL)
+		if err != nil {
+			continue
+		}
+
+		links = append(links, absoluteURL)
+	}
 
 	return links
 }

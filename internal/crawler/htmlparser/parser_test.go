@@ -36,7 +36,7 @@ func TestParse(t *testing.T) {
 		doc := prepareHTMLDoc(t, "example.html")
 		pageURL := prepareURL(t)
 
-		result, err := htmlparser.Parse(doc, pageURL)
+		result, err := htmlparser.Parse(doc, pageURL, false)
 		require.NoError(t, err)
 		require.Equal(t, "Example Website", *result.Title)
 		require.Equal(t, "A sample website for testing", *result.Description)
@@ -81,7 +81,7 @@ func TestParse(t *testing.T) {
 		pageURL := prepareURL(t)
 		doc := prepareHTMLDoc(t, "base-and-styles.html")
 
-		result, err := htmlparser.Parse(doc, pageURL)
+		result, err := htmlparser.Parse(doc, pageURL, false)
 		require.NoError(t, err)
 		require.Len(t, result.Links, 2)
 		require.Equal(t, "https://example.com/assets/next", result.Links[0].String())
@@ -98,7 +98,7 @@ func TestParse(t *testing.T) {
 	t.Run("should skip fragment without base", func(t *testing.T) {
 		html := `<a href="#part">Section</a>`
 
-		result, err := htmlparser.Parse(strings.NewReader(html), prepareURL(t))
+		result, err := htmlparser.Parse(strings.NewReader(html), prepareURL(t), false)
 		require.NoError(t, err)
 		require.Empty(t, result.Links)
 	})
@@ -109,7 +109,7 @@ func TestParse(t *testing.T) {
 			<a href="#part">Section</a>
 		`
 
-		result, err := htmlparser.Parse(strings.NewReader(html), prepareURL(t))
+		result, err := htmlparser.Parse(strings.NewReader(html), prepareURL(t), false)
 		require.NoError(t, err)
 		require.Empty(t, result.Links)
 	})
@@ -120,9 +120,62 @@ func TestParse(t *testing.T) {
 			<a href="#part">Section</a>
 		`
 
-		result, err := htmlparser.Parse(strings.NewReader(html), prepareURL(t))
+		result, err := htmlparser.Parse(strings.NewReader(html), prepareURL(t), false)
 		require.NoError(t, err)
 		require.Len(t, result.Links, 1)
 		require.Equal(t, "https://example.com/guide/", result.Links[0].String())
+	})
+
+	t.Run("should parse RSS links", func(t *testing.T) {
+		rss := `
+			<rss version="2.0">
+				<channel>
+					<link>https://example.com</link>
+					<item>
+						<link>/articles/1</link>
+					</item>
+					<item>
+						<link>https://other.com/articles/2</link>
+					</item>
+				</channel>
+			</rss>
+		`
+
+		result, err := htmlparser.Parse(strings.NewReader(rss), prepareURL(t), true)
+		require.NoError(t, err)
+		require.Len(t, result.Links, 3)
+
+		require.Equal(t, "https://example.com", result.Links[0].String())
+		require.Equal(t, "https://example.com/articles/1", result.Links[1].String())
+		require.Equal(t, "https://other.com/articles/2", result.Links[2].String())
+	})
+
+	t.Run("should skip RSS links when disabled", func(t *testing.T) {
+		rss := `
+			<rss version="2.0">
+				<channel>
+					<item>
+						<link>https://example.com/article</link>
+					</item>
+				</channel>
+			</rss>
+		`
+
+		result, err := htmlparser.Parse(strings.NewReader(rss), prepareURL(t), false)
+		require.NoError(t, err)
+		require.Empty(t, result.Links)
+	})
+
+	t.Run("should ignore malformed RSS", func(t *testing.T) {
+		rss := `
+			<rss>
+				<channel>
+					<item>
+						<link>https://example.com/article</link>
+		`
+
+		result, err := htmlparser.Parse(strings.NewReader(rss), prepareURL(t), true)
+		require.NoError(t, err)
+		require.Empty(t, result.Links)
 	})
 }
