@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/urfave/cli/v3"
@@ -51,6 +52,13 @@ var cliFlags = []cli.Flag{
 		Name:  "timeout",
 		Usage: "per-request timeout",
 		Value: 15 * time.Second,
+		Validator: func(value time.Duration) error {
+			if value <= 0 {
+				return errors.New("--timeout must be greater than zero")
+			}
+
+			return nil
+		},
 	},
 	&cli.IntFlag{
 		Name:  "rps",
@@ -61,11 +69,25 @@ var cliFlags = []cli.Flag{
 		Name:  "user-agent",
 		Usage: "custom user agent",
 		Value: "HexletCrawler/1.0",
+		Validator: func(value string) error {
+			if strings.TrimSpace(value) == "" {
+				return errors.New("--user-agent cannot be empty")
+			}
+
+			return nil
+		},
 	},
 	&cli.IntFlag{
 		Name:  "workers",
 		Value: 4,
 		Usage: "number of concurrent workers",
+		Validator: func(value int) error {
+			if value <= 0 {
+				return errors.New("--workers must be greater than zero")
+			}
+
+			return nil
+		},
 	},
 	&cli.BoolFlag{
 		Name:  "verbose",

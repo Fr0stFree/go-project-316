@@ -16,6 +16,7 @@ import (
 )
 
 // Options defines the configuration for the web crawling operation.
+// Zero values use defaults for optional settings, except Depth, where zero is a valid crawl depth.
 type Options struct {
 	URL         string
 	Depth       int

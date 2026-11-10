@@ -260,7 +260,7 @@ func TestCLI(t *testing.T) {
 		stdout, stderr, exitCode := runCLI(t, "--workers", "-1", "http://example.test")
 
 		require.Equal(t, 1, exitCode)
-		require.Empty(t, stdout)
-		require.Equal(t, "something went wrong during analysis of `http://example.test`: size cannot be negative\n", string(stderr))
+		require.Contains(t, string(stdout), "USAGE:")
+		require.Contains(t, string(stderr), "--workers must be greater than zero")
 	})
 }
