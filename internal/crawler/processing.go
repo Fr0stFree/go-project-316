@@ -44,7 +44,7 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 	slog.DebugContext(
 		ctx,
 		"Processing page task...",
-		"url", url,
+		"url", httptools.SanitizeURL(url),
 		"depth", depth,
 	)
 
@@ -62,7 +62,7 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 		slog.DebugContext(
 			ctx,
 			"Failed to fetch url",
-			"url", url.String(),
+			"url", httptools.SanitizeURL(url),
 			"err", err.Error(),
 		)
 
@@ -87,8 +87,8 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 		slog.DebugContext(
 			ctx,
 			"Skipping page parsing after cross-domain redirect",
-			"url", url.String(),
-			"redirect_url", documentURL.String(),
+			"url", httptools.SanitizeURL(url),
+			"redirect_url", httptools.SanitizeURL(documentURL),
 		)
 
 		return result
@@ -98,7 +98,7 @@ func (c *Crawler) processWebPage(ctx context.Context, url *url.URL, depth int) p
 		slog.DebugContext(
 			ctx,
 			"Response is not HTML or XML",
-			"url", url.String(),
+			"url", httptools.SanitizeURL(url),
 			"content_type", response.Header.Get("Content-Type"),
 		)
 
@@ -122,7 +122,7 @@ func (c *Crawler) processLinkCheck(ctx context.Context, url *url.URL, depth int)
 	slog.DebugContext(
 		ctx,
 		"Processing link check...",
-		"url", url,
+		"url", httptools.SanitizeURL(url),
 		"depth", depth,
 	)
 
@@ -151,7 +151,7 @@ func (c *Crawler) processAsset(ctx context.Context, assetURL *url.URL) assetTask
 	result := assetTaskResult{url: assetURL}
 	method := http.MethodHead
 
-	slog.DebugContext(ctx, "Processing asset", "url", assetURL.String(), "method", method)
+	slog.DebugContext(ctx, "Processing asset", "url", httptools.SanitizeURL(assetURL), "method", method)
 
 	response, err := c.fetcher.Fetch(ctx, assetURL, method)
 	if err != nil {
@@ -165,7 +165,7 @@ func (c *Crawler) processAsset(ctx context.Context, assetURL *url.URL) assetTask
 		_ = response.Body.Close()
 		method = http.MethodGet
 
-		slog.DebugContext(ctx, "Processing asset", "url", assetURL.String(), "method", method)
+		slog.DebugContext(ctx, "Processing asset", "url", httptools.SanitizeURL(assetURL), "method", method)
 
 		response, err = c.fetcher.Fetch(ctx, assetURL, method)
 		if err != nil {

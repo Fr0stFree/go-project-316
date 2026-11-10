@@ -38,3 +38,25 @@ func URLKey(u *url.URL) string {
 
 	return normalized.String()
 }
+
+// SanitizeURL removes user credentials without modifying the original URL.
+func SanitizeURL(u *url.URL) string {
+	if u == nil {
+		return ""
+	}
+
+	sanitized := *u
+	sanitized.User = nil
+
+	return sanitized.String()
+}
+
+// SanitizeURLStr removes user credentials from a URL string.
+func SanitizeURLStr(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+
+	return SanitizeURL(u)
+}

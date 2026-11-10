@@ -17,7 +17,7 @@ import (
 // Build creates a crawl report from the collected task results.
 func Build(rootURL string, maxDepth int, results map[string]crawler.Result, generatedAt time.Time) *Report {
 	report := &Report{
-		RootURL:     rootURL,
+		RootURL:     httptools.SanitizeURLStr(rootURL),
 		Depth:       maxDepth,
 		GeneratedAt: generatedAt,
 		Pages:       make([]Page, 0, len(results)),
@@ -29,7 +29,7 @@ func Build(rootURL string, maxDepth int, results map[string]crawler.Result, gene
 		}
 
 		page := Page{
-			URL:          result.URL.String(),
+			URL:          httptools.SanitizeURL(result.URL),
 			Depth:        result.Depth,
 			HTTPStatus:   result.HTTPStatus,
 			Status:       result.Status,
@@ -80,7 +80,7 @@ func buildBrokenLinks(current crawler.Result, all map[string]crawler.Result) []N
 		}
 
 		return NodeLink{
-			URL:        link.String(),
+			URL:        httptools.SanitizeURL(link),
 			StatusCode: target.HTTPStatus,
 			Error:      errToStr(target.Err),
 		}, true
@@ -90,7 +90,7 @@ func buildBrokenLinks(current crawler.Result, all map[string]crawler.Result) []N
 func buildAssets(assets []crawler.AssetResult) []Asset {
 	return lo.Map(assets, func(asset crawler.AssetResult, _ int) Asset {
 		return Asset{
-			URL:        asset.URL,
+			URL:        httptools.SanitizeURLStr(asset.URL),
 			Type:       string(asset.Type),
 			StatusCode: asset.StatusCode,
 			SizeBytes:  asset.SizeBytes,

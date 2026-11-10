@@ -150,3 +150,19 @@ func TestURLKey(t *testing.T) {
 	require.NotEqual(t, httptools.URLKey(withoutSlash), httptools.URLKey(otherQuery))
 	require.Equal(t, "https://EXAMPLE.COM?source=one", withoutSlash.String())
 }
+
+func TestSanitizeURL(t *testing.T) {
+	t.Run("should remove user credentials", func(t *testing.T) {
+		original, err := url.Parse("https://admin:secret@example.com/page")
+		require.NoError(t, err)
+
+		result := httptools.SanitizeURL(original)
+
+		require.Equal(t, "https://example.com/page", result)
+		require.Equal(t, "https://admin:secret@example.com/page", original.String())
+	})
+
+	t.Run("should handle nil URL", func(t *testing.T) {
+		require.Empty(t, httptools.SanitizeURL(nil))
+	})
+}
