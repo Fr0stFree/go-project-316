@@ -7,7 +7,8 @@ Hexlet Crawler is a Go command-line tool for scanning a website and producing a 
 - Crawls pages on the starting URL's hostname up to a configurable depth.
 - Checks links outside that hostname without crawling their pages and reports broken links on the pages that reference them.
 - Reports HTTP status and request errors for crawled pages.
-- Collects the URL, type, response status, and size of referenced images, scripts, and stylesheets.
+- Collects URLs, types, HTTP statuses, and sizes of referenced images, scripts, and stylesheets, including responsive images specified through `srcset` and `<picture>`.
+- Deduplicates HTTP checks for equivalent resource URLs while preserving individual references in the report.
 - Extracts the page title, meta description, and presence of an H1 heading.
 - Supports request timeouts, retry attempts, concurrency, a custom User-Agent, and either a delay or a requests-per-second limit.
 - Writes the report as JSON to standard output; `--verbose` writes debug logs to standard error.
@@ -69,11 +70,11 @@ Set the crawl depth and request limits with flags before the URL:
 go run ./cmd/hexlet-go-crawler --depth 2 --retries 2 --delay 200ms --timeout 10s https://example.com
 ```
 
-`--depth 1` includes only the starting page in `pages`; its links are still checked for failures. The default depth is `10`. `--retries N` allows one initial request and up to N additional attempts for temporary failures such as 429, 5xx, or retryable network errors. The default is `1`, so temporary failures get one additional attempt. Each retry includes a fixed one-second wait, independent of the `--delay` and `--rps` settings.
+`--depth 1` includes only the starting page in `pages`; its links are still checked for failures. The default depth is `10`. `--retries N` allows one initial request and up to N additional attempts for temporary failures such as HTTP 429, HTTP 5xx, retryable network errors, and interrupted asset body reads. The default is `1`. Each retry includes a fixed one-second wait, independent of the `--delay` and `--rps` settings.
 
 Links on the starting URL's hostname are followed until the depth limit. At the limit, and for links on other hostnames, the crawler checks the target with `HEAD` but does not add it to `pages`. If the server rejects `HEAD` with 405 or 501, the crawler tries `GET`. A failed check appears in the referring page's `broken_links`. Referenced assets can be fetched from other hosts; when `HEAD` is unsupported or does not provide a size, the crawler uses `GET` to measure the response body.
 
-Hostnames are compared without regard to case, and URL fragments do not create duplicate visits. Responses with a `text/html`, `application/xml`, or `text/xml` content type are parsed for links and SEO fields. Text in titles, descriptions, and H1 headings is normalized for whitespace; the report records whether each field was present.
+Hostnames are compared without regard to case, including equivalent internationalized domain names. URL fragments do not create duplicate visits. HTML responses are decoded to UTF-8 before parsing. Links are extracted from HTML pages and RSS 2.0 feeds. Supported content types include `text/html`, `application/xml`, `text/xml`, and `application/rss+xml`. SEO metadata is extracted from HTML pages, with whitespace normalized in titles, descriptions, and H1 headings. The report records whether each SEO field was present.
 
 | Flag | Description | Default |
 | --- | --- | --- |
