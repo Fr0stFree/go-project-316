@@ -127,4 +127,25 @@ func TestCrawler_ProcessAsset(t *testing.T) {
 		require.Equal(t, 5, result.sizeBytes)
 		require.Equal(t, []string{http.MethodHead}, methods)
 	})
+
+	t.Run("size from GET when HEAD has no Content-Length", func(t *testing.T) {
+		methods := make([]string, 0, 2)
+		asset := mustParseURL(t, "https://example.com/logo.png")
+		crawler := newTestCrawler(t, func(request *http.Request) (*http.Response, error) {
+			methods = append(methods, request.Method)
+
+			if request.Method == http.MethodHead {
+				return testResponse(http.StatusOK, -1, ""), nil
+			}
+
+			return testResponse(http.StatusOK, 5, "hello"), nil
+		})
+
+		result := crawler.processAsset(context.Background(), asset)
+
+		require.NoError(t, result.err)
+		require.Equal(t, http.StatusOK, result.httpStatus)
+		require.Equal(t, 5, result.sizeBytes)
+		require.Equal(t, []string{http.MethodHead, http.MethodGet}, methods)
+	})
 }
