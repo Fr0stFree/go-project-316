@@ -175,21 +175,23 @@ func findTitle(doc *goquery.Document) *string {
 func findImages(doc *goquery.Document, pageURL *url.URL) []Asset {
 	var assets []Asset
 
-	doc.Find("img[src]").Each(func(_ int, s *goquery.Selection) {
-		rawURL, _ := s.Attr("src")
-
-		rawURL = strings.TrimSpace(rawURL)
-		if rawURL == "" {
-			return
-		}
-
-		absoluteURL, err := resolveURL(rawURL, pageURL)
+	addImage := func(rawURL string) {
+		absoluteURL, err := resolveURL(strings.TrimSpace(rawURL), pageURL)
 		if err != nil {
 			return
 		}
 
-		asset := Asset{Type: AssetImage, URL: absoluteURL}
-		assets = append(assets, asset)
+		assets = append(assets, Asset{Type: AssetImage, URL: absoluteURL})
+	}
+
+	doc.Find("img[src]").Each(func(_ int, s *goquery.Selection) {
+		addImage(s.AttrOr("src", ""))
+	})
+
+	doc.Find("img[srcset], picture source[srcset]").Each(func(_ int, s *goquery.Selection) {
+		for _, rawURL := range parseSrcset(s.AttrOr("srcset", "")) {
+			addImage(rawURL)
+		}
 	})
 
 	return assets
@@ -272,4 +274,19 @@ func resolveURL(rawURL string, pageURL *url.URL) (*url.URL, error) {
 	}
 
 	return httptools.NormalizeURL(absoluteURL), nil
+}
+
+func parseSrcset(srcset string) []string {
+	var urls []string
+
+	for candidate := range strings.SplitSeq(srcset, ",") {
+		fields := strings.Fields(candidate)
+		if len(fields) == 0 {
+			continue
+		}
+
+		urls = append(urls, fields[0])
+	}
+
+	return urls
 }

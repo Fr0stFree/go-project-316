@@ -178,4 +178,28 @@ func TestParse(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, result.Links)
 	})
+
+	t.Run("should parse images from srcset", func(t *testing.T) {
+		html := `<img srcset="/small.png 1x, /large.png 2x">`
+
+		result, err := htmlparser.Parse(strings.NewReader(html), prepareURL(t), false)
+		require.NoError(t, err)
+		require.Len(t, result.Assets, 2)
+
+		require.Equal(t, "https://example.com/small.png", result.Assets[0].URL.String())
+		require.Equal(t, "https://example.com/large.png", result.Assets[1].URL.String())
+	})
+
+	t.Run("should parse images from picture", func(t *testing.T) {
+		html := `
+			<picture>
+				<source srcset="/desktop.webp 800w, /mobile.webp 400w">
+				<img src="/fallback.jpg">
+			</picture>
+		`
+
+		result, err := htmlparser.Parse(strings.NewReader(html), prepareURL(t), false)
+		require.NoError(t, err)
+		require.Len(t, result.Assets, 3)
+	})
 }
