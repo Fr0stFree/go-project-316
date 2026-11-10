@@ -484,7 +484,7 @@ func TestCrawler_MergeResults(t *testing.T) {
 
 	require.Len(t, results, 2)
 	require.Equal(t, []AssetResult{{
-		URL:        asset.String(),
+		URL:        asset,
 		Type:       htmlparser.AssetImage,
 		StatusCode: http.StatusOK,
 		SizeBytes:  128,

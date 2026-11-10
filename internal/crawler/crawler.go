@@ -240,7 +240,7 @@ func (c *Crawler) runIteration(
 }
 
 func (c *Crawler) handleAssetResult(state *crawlerState, result assetTaskResult) {
-	state.assets[result.url.String()] = result
+	state.assets[httptools.URLKey(result.url)] = result
 }
 
 func (c *Crawler) handleLinkResult(state *crawlerState, result linkTaskResult) {
@@ -305,14 +305,12 @@ func (c *Crawler) mergeResults(state *crawlerState) map[string]Result {
 
 		if page.html != nil {
 			for _, asset := range page.html.Assets {
-				assetURL := asset.URL.String()
-
 				item := AssetResult{
-					URL:  assetURL,
+					URL:  asset.URL,
 					Type: asset.Type,
 				}
 
-				if fetched, ok := state.assets[assetURL]; ok {
+				if fetched, ok := state.assets[httptools.URLKey(asset.URL)]; ok {
 					item.StatusCode = fetched.httpStatus
 					item.SizeBytes = fetched.sizeBytes
 

@@ -90,7 +90,7 @@ func buildBrokenLinks(current crawler.Result, all map[string]crawler.Result) []N
 func buildAssets(assets []crawler.AssetResult) []Asset {
 	return lo.Map(assets, func(asset crawler.AssetResult, _ int) Asset {
 		return Asset{
-			URL:        httptools.SanitizeURLStr(asset.URL),
+			URL:        httptools.SanitizeURL(asset.URL),
 			Type:       string(asset.Type),
 			StatusCode: asset.StatusCode,
 			SizeBytes:  asset.SizeBytes,

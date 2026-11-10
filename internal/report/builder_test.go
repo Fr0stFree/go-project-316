@@ -27,6 +27,7 @@ func TestBuild(t *testing.T) {
 	root := mustParseURL(t, "https://example.com/")
 	broken := mustParseURL(t, "https://example.com/missing")
 	checked := mustParseURL(t, "https://other.com/")
+	logo := mustParseURL(t, "https://example.com/logo.png")
 	now := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
 	title := "Example"
 	results := map[string]crawler.Result{
@@ -40,7 +41,7 @@ func TestBuild(t *testing.T) {
 				Links: []*url.URL{broken},
 			},
 			Assets: []crawler.AssetResult{{
-				URL:        "https://example.com/logo.png",
+				URL:        logo,
 				Type:       htmlparser.AssetImage,
 				StatusCode: http.StatusOK,
 				SizeBytes:  128,

@@ -53,7 +53,7 @@ type assetTaskResult struct {
 
 // AssetResult represents the result of fetching a page asset.
 type AssetResult struct {
-	URL        string
+	URL        *url.URL
 	Type       htmlparser.AssetType
 	StatusCode int
 	SizeBytes  int

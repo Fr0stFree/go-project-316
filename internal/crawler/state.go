@@ -79,7 +79,7 @@ func (s *crawlerState) savePage(result pageTaskResult) pageTaskResult {
 }
 
 func (s *crawlerState) markAssetSeen(url *url.URL) bool {
-	key := url.String()
+	key := httptools.URLKey(url)
 
 	if _, exists := s.seenAssets[key]; exists {
 		return false
